@@ -1,0 +1,18 @@
+services:
+  antivirus-api:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - antivirus-data:/app/antivirus_data
+    environment:
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
+    restart: unless-stopped
+
+  antivirus-tests:
+    build: .
+    command: ["pytest", "-q"]
+    profiles: ["test"]
+
+volumes:
+  antivirus-data:

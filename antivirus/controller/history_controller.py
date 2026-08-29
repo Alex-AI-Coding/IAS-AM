@@ -1,0 +1,10 @@
+from antivirus.repository.scan_repository import ScanRepository
+
+
+class HistoryController:
+    def __init__(self, repository=None):
+        self.repository = repository or ScanRepository()
+
+    def recent_scans(self, limit=100):
+        return self.repository.get_recent_scans(limit=limit)
+
