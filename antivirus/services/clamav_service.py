@@ -21,7 +21,9 @@ class ClamAVService:
         try:
             import pyclamd
 
-            client = pyclamd.ClamdNetworkSocket(host="127.0.0.1", port=3310, timeout=0.25)
+            client = pyclamd.ClamdNetworkSocket(
+                host="127.0.0.1", port=3310, timeout=0.25
+            )
             client.ping()
             return client
         except Exception:
@@ -44,7 +46,9 @@ class ClamAVService:
             }
 
         try:
-            scan_method = getattr(self.client, "scan_file", None) or getattr(self.client, "scan", None)
+            scan_method = getattr(self.client, "scan_file", None) or getattr(
+                self.client, "scan", None
+            )
             if scan_method is None:
                 raise RuntimeError("ClamAV client does not provide a file scan method.")
             raw = scan_method(str(path))
@@ -58,13 +62,31 @@ class ClamAVService:
         if raw is None:
             return {"status": "clean", "message": "OK", "threats": []}
         if not isinstance(raw, dict):
-            return {"status": "error", "message": "Unexpected ClamAV response.", "threats": []}
+            return {
+                "status": "error",
+                "message": "Unexpected ClamAV response.",
+                "threats": [],
+            }
 
         infected = raw.get("Infected")
         result_text = str(raw.get("Result", "")).upper()
-        daemon_matches = [value for value in raw.values() if isinstance(value, tuple) and value and value[0] == "FOUND"]
-        if infected is True or infected in ("FOUND", "YES") or "FOUND" in result_text or "INFECTED" in result_text or daemon_matches:
-            name = str(daemon_matches[0][1]) if daemon_matches else raw.get("Result", "ClamAV.Detected")
+        daemon_matches = [
+            value
+            for value in raw.values()
+            if isinstance(value, tuple) and value and value[0] == "FOUND"
+        ]
+        if (
+            infected is True
+            or infected in ("FOUND", "YES")
+            or "FOUND" in result_text
+            or "INFECTED" in result_text
+            or daemon_matches
+        ):
+            name = (
+                str(daemon_matches[0][1])
+                if daemon_matches
+                else raw.get("Result", "ClamAV.Detected")
+            )
             return {
                 "status": "detected",
                 "message": raw.get("Result", "ClamAV detected a threat."),

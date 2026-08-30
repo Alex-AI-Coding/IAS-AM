@@ -8,3 +8,5 @@ class HistoryController:
     def recent_scans(self, limit=100):
         return self.repository.get_recent_scans(limit=limit)
 
+    def clear_history(self):
+        return self.repository.clear_history()

@@ -1,5 +1,5 @@
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from typing import Dict, List
+from datetime import datetime, timedelta, timezone
 from antivirus.repository.scan_repository import ScanRepository
 from antivirus.repository.threat_repository import ThreatRepository
 from antivirus.model.scan_report import ScanReport
@@ -8,31 +8,32 @@ from antivirus.model.scan_report import ScanReport
 class StatisticsService:
     """Threat statistics and analytics service."""
 
-    def __init__(self):
-        self.scan_repo = ScanRepository()
-        self.threat_repo = ThreatRepository()
+    def __init__(self, scan_repo=None, threat_repo=None):
+        self.scan_repo = scan_repo or ScanRepository()
+        self.threat_repo = threat_repo or ThreatRepository()
 
-    def get_scan_statistics(self, hours: int = 24) -> Dict:
+    def get_scan_statistics(self, hours: int | None = 24) -> Dict:
         """Get scan statistics for the last N hours."""
-        cutoff_time = datetime.now() - timedelta(hours=hours)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours or 0)
         recent_scans = self.scan_repo.get_recent_scans(limit=1000)
 
-        total_scans = 0
+        filtered_scans = []
         threat_scans = 0
         clean_scans = 0
-        threat_types: Dict[str, int] = {}
 
         for scan in recent_scans:
-            scan_time = scan.get("scan_time")
-            if scan_time:
+            scan_time = scan.get("started_at")
+            if scan_time and hours is not None:
                 try:
                     scan_datetime = datetime.fromisoformat(scan_time)
+                    if scan_datetime.tzinfo is None:
+                        scan_datetime = scan_datetime.replace(tzinfo=timezone.utc)
                     if scan_datetime < cutoff_time:
                         continue
                 except (ValueError, TypeError):
                     pass
 
-            total_scans += 1
+            filtered_scans.append(scan)
             status = scan.get("status", "unknown")
 
             if status == "detected":
@@ -40,16 +41,25 @@ class StatisticsService:
             elif status == "clean":
                 clean_scans += 1
 
+        total_scans = len(filtered_scans)
+
         return {
             "total_scans": total_scans,
             "threat_scans": threat_scans,
             "clean_scans": clean_scans,
             "detection_rate": (
-                round((threat_scans / total_scans * 100), 2)
-                if total_scans > 0
-                else 0
+                round((threat_scans / total_scans * 100), 2) if total_scans > 0 else 0
             ),
             "time_period_hours": hours,
+            "files_scanned": sum(
+                int(scan.get("file_count", 0)) for scan in filtered_scans
+            ),
+            "threats_found": sum(
+                int(scan.get("threats_found", 0)) for scan in filtered_scans
+            ),
+            "clean_files": sum(
+                int(scan.get("clean_files", 0)) for scan in filtered_scans
+            ),
         }
 
     def get_threat_distribution(self) -> Dict[str, int]:
@@ -58,26 +68,24 @@ class StatisticsService:
         distribution: Dict[str, int] = {}
 
         for scan in recent_scans:
-            threats = scan.get("threats", "")
+            threats = scan.get("threats", [])
             if threats:
-                # Threats are stored as comma-separated list or JSON
-                if threats.startswith("["):
-                    # Handle JSON format if applicable
+                if isinstance(threats, list):
+                    threat_list = threats
+                else:
                     try:
                         import json
 
                         threat_list = json.loads(threats)
-                        for threat in threat_list:
-                            category = threat.get("category", "Unknown")
-                            distribution[category] = distribution.get(category, 0) + 1
                     except (json.JSONDecodeError, TypeError):
-                        pass
-                else:
-                    # Handle simple comma-separated format
-                    threat_names = threats.split(",")
-                    for threat_name in threat_names:
-                        category = threat_name.strip().split(".")[0]
-                        distribution[category] = distribution.get(category, 0) + 1
+                        threat_list = [
+                            {"category": name.strip().split(".")[0]}
+                            for name in str(threats).split(",")
+                            if name.strip()
+                        ]
+                for threat in threat_list:
+                    category = threat.get("category", "Unknown")
+                    distribution[category] = distribution.get(category, 0) + 1
 
         return distribution
 
@@ -87,17 +95,20 @@ class StatisticsService:
         threat_counts: Dict[str, int] = {}
 
         for scan in recent_scans:
-            threats = scan.get("threats", "")
+            threats = scan.get("threats", [])
             if threats:
-                try:
+                if isinstance(threats, list):
+                    threat_list = threats
+                else:
                     import json
 
-                    threat_list = json.loads(threats)
-                    for threat in threat_list:
-                        threat_name = threat.get("name", "Unknown")
-                        threat_counts[threat_name] = threat_counts.get(threat_name, 0) + 1
-                except (json.JSONDecodeError, TypeError):
-                    pass
+                    try:
+                        threat_list = json.loads(threats)
+                    except (json.JSONDecodeError, TypeError):
+                        threat_list = []
+                for threat in threat_list:
+                    threat_name = threat.get("name", "Unknown")
+                    threat_counts[threat_name] = threat_counts.get(threat_name, 0) + 1
 
         sorted_threats = sorted(threat_counts.items(), key=lambda x: x[1], reverse=True)
         return [
@@ -150,15 +161,11 @@ class StatisticsService:
                 "scans_processed": 0,
             }
 
-        total_time = 0
-        count = 0
-
-        for scan in recent_scans:
-            # Placeholder: actual timing would need to be stored in scan_repository
-            count += 1
+        durations = [float(scan.get("duration", 0) or 0) for scan in recent_scans]
+        count = len(durations)
 
         return {
             "total_scans": len(recent_scans),
             "scans_processed": count,
-            "avg_scan_time_ms": round(total_time / count) if count > 0 else 0,
+            "avg_scan_time_ms": round(sum(durations) / count * 1000) if count else 0,
         }

@@ -2,12 +2,14 @@ import sqlite3
 from pathlib import Path
 from typing import Optional, Dict, Any
 
+from antivirus.config.settings import THREAT_DB_PATH
+
 
 class ThreatRepository:
     """Local SQLite repository for known malicious hashes and metadata."""
 
-    def __init__(self, db_path: str = "antivirus_data/threats.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str | None = None):
+        self.db_path = str(db_path or THREAT_DB_PATH)
         self._ensure_parent_directory()
         self._initialize()
 

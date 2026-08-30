@@ -108,7 +108,9 @@ def test_scan_batch_api_success(client, tmp_path):
     file1.write_text("content1")
     file2.write_text("content2")
 
-    response = client.post("/api/v1/scan/batch", json={"targets": [str(file1), str(file2)]})
+    response = client.post(
+        "/api/v1/scan/batch", json={"targets": [str(file1), str(file2)]}
+    )
     assert response.status_code == 200
     data = response.get_json()
     assert data["summary"]["total_files"] == 2
@@ -122,7 +124,9 @@ def test_scan_directory_and_batch_directory(client, tmp_path):
     assert scan_response.status_code == 200
     assert scan_response.get_json()["summary"]["threat_files"] == 1
 
-    batch_response = client.post("/api/v1/scan/batch", json={"targets": [str(directory)]})
+    batch_response = client.post(
+        "/api/v1/scan/batch", json={"targets": [str(directory)]}
+    )
     assert batch_response.status_code == 200
     assert batch_response.get_json()["summary"]["threat_files"] == 1
 

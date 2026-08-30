@@ -1,66 +1,108 @@
-"""Main application window and frontend navigation."""
+"""Main Premiere Security application shell and page coordination."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMainWindow,
+    QMessageBox,
     QStackedWidget,
+    QTabBar,
     QVBoxLayout,
     QWidget,
 )
 
+from antivirus.controller.history_controller import HistoryController
+from antivirus.controller.scan_controller import ScanController
+from antivirus.model.scan_report import ScanReport
+from antivirus.services.statistics_service import StatisticsService
 from antivirus.view.dashboard_view import DashboardView
+from antivirus.view.branding import AppLogo
 from antivirus.view.history_view import HistoryView
-from antivirus.view.quarantine_view import QuarantineView
+from antivirus.view.results_view import ResultsView
 from antivirus.view.scan_view import ScanView
 from antivirus.view.settings_view import SettingsView
-from antivirus.controller.scan_controller import ScanController
-from antivirus.controller.quarantine_controller import QuarantineController
-from antivirus.controller.history_controller import HistoryController
-from antivirus.view.results_view import ResultsView
-from antivirus.services.statistics_service import StatisticsService
 
 
 class MainWindow(QMainWindow):
-    """Application shell with sidebar navigation."""
+    """Application shell with a desktop-style top navigation bar."""
 
-    PAGE_NAMES = ("Dashboard", "Scan", "Scan Results", "Quarantine", "History", "Settings")
+    PAGE_NAMES = ("Dashboard", "Scan", "Results", "History", "Settings")
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Antivirus")
-        self.resize(1000, 650)
+        self.setWindowTitle("Premiere Security — Educational Antivirus")
+        self.setMinimumSize(960, 640)
+        self.resize(1180, 760)
+        self._close_confirmed = False
+
+        self.scan_controller = ScanController()
+        self.history_controller = HistoryController(self.scan_controller.repository)
+        self.statistics_service = StatisticsService(
+            scan_repo=self.scan_controller.repository
+        )
         self._build_ui()
+        self._apply_saved_settings()
+        self._refresh_dashboard()
 
     def _build_ui(self) -> None:
         root = QWidget(self)
-        layout = QHBoxLayout(root)
+        root.setObjectName("AppRoot")
+        layout = QVBoxLayout(root)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        sidebar = QWidget(root)
-        sidebar.setFixedWidth(220)
-        sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(16, 20, 16, 16)
+        top_bar = QWidget(root)
+        top_bar.setObjectName("TopBar")
+        top_bar.setFixedHeight(82)
+        top_layout = QHBoxLayout(top_bar)
+        top_layout.setContentsMargins(22, 0, 22, 0)
+        top_layout.setSpacing(16)
 
-        title = QLabel("ANTIVIRUS", sidebar)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sidebar_layout.addWidget(title)
+        mark = AppLogo(top_bar)
 
-        self.navigation = QListWidget(sidebar)
-        self.navigation.setObjectName("navigation")
+        brand_text = QVBoxLayout()
+        brand_text.setSpacing(0)
+        brand_title = QLabel("Premiere Security", top_bar)
+        brand_title.setProperty("role", "brandTitle")
+        brand_subtitle = QLabel("Educational antivirus", top_bar)
+        brand_subtitle.setProperty("role", "brandSubtitle")
+        brand_text.addWidget(brand_title)
+        brand_text.addWidget(brand_subtitle)
+
+        self.navigation = QTabBar(top_bar)
+        self.navigation.setObjectName("TopNavigation")
+        self.navigation.setDrawBase(False)
+        self.navigation.setExpanding(False)
+        self.navigation.setElideMode(Qt.TextElideMode.ElideRight)
         for page_name in self.PAGE_NAMES:
-            QListWidgetItem(page_name, self.navigation)
-        sidebar_layout.addWidget(self.navigation)
+            self.navigation.addTab(page_name)
+
+        status_card = QFrame(top_bar)
+        status_card.setObjectName("TopStatus")
+        status_card.setMinimumWidth(158)
+        status_layout = QVBoxLayout(status_card)
+        status_layout.setContentsMargins(12, 8, 12, 8)
+        status_layout.setSpacing(1)
+        self.protection_status_title = QLabel("●  Protection ready", status_card)
+        self.protection_status_title.setProperty("role", "topStatusTitle")
+        self.protection_status_text = QLabel("Core engines available", status_card)
+        self.protection_status_text.setProperty("role", "topStatusText")
+        status_layout.addWidget(self.protection_status_title)
+        status_layout.addWidget(self.protection_status_text)
+
+        top_layout.addWidget(mark)
+        top_layout.addLayout(brand_text)
+        top_layout.addSpacing(12)
+        top_layout.addWidget(self.navigation, 1)
+        top_layout.addWidget(status_card)
 
         self.pages = QStackedWidget(root)
-        self.scan_controller = ScanController()
-        self.quarantine_controller = QuarantineController()
-        self.history_controller = HistoryController()
+        self.pages.setObjectName("PageStack")
+        self.dashboard_view = DashboardView(self.pages)
         self.scan_view = ScanView(
             self.scan_controller.scan_file,
             self.scan_controller.scan_directory,
@@ -68,62 +110,149 @@ class MainWindow(QMainWindow):
             self.pages,
         )
         self.results_view = ResultsView(self.pages)
-        self.quarantine_view = QuarantineView(self.quarantine_controller, self.pages)
         self.history_view = HistoryView(self.history_controller, self.pages)
         self.settings_view = SettingsView(self.pages)
-        self.dashboard_view = DashboardView(self.pages)
         for page in (
             self.dashboard_view,
             self.scan_view,
             self.results_view,
-            self.quarantine_view,
             self.history_view,
             self.settings_view,
         ):
             self.pages.addWidget(page)
 
-        layout.addWidget(sidebar)
+        layout.addWidget(top_bar)
         layout.addWidget(self.pages, 1)
         self.setCentralWidget(root)
 
-        self.navigation.currentRowChanged.connect(self.pages.setCurrentIndex)
-        self.navigation.currentRowChanged.connect(self._page_changed)
-        self.navigation.setCurrentRow(0)
+        self.navigation.currentChanged.connect(self._navigate)
+        self.navigation.setCurrentIndex(0)
+        self.pages.setCurrentIndex(0)
         self.scan_view.scan_completed.connect(self._show_scan_result)
-        self.results_view.quarantine_requested.connect(self._quarantine_result)
-        self.dashboard_view.start_scan.connect(lambda: self.navigation.setCurrentRow(1))
+        self.dashboard_view.start_scan.connect(self._quick_scan_from_dashboard)
+        self.dashboard_view.open_history.connect(
+            lambda: self.navigation.setCurrentIndex(3)
+        )
         self.settings_view.setting_changed.connect(self._setting_changed)
+        self.history_view.history_changed.connect(self._refresh_dashboard)
+
+    def _navigate(self, row):
+        current_row = self.pages.currentIndex()
+        if (
+            current_row == 4
+            and row != 4
+            and self.settings_view.has_unsaved_changes()
+            and not self.settings_view.resolve_unsaved_changes()
+        ):
+            self.navigation.blockSignals(True)
+            self.navigation.setCurrentIndex(current_row)
+            self.navigation.blockSignals(False)
+            return
+        self.pages.setCurrentIndex(row)
+        self._page_changed(row)
+
+    def _apply_saved_settings(self):
+        for key, enabled in self.settings_view.values().items():
+            self._setting_changed(key, enabled)
+        states = self.scan_controller.scanner.detection_engine.get_engine_states()
+        self.settings_view.update_availability(states)
+        self._update_protection_status()
 
     def _page_changed(self, row):
         if row == 3:
-            self.quarantine_view.refresh()
-        elif row == 4:
             self.history_view.refresh()
         elif row == 0:
-            try:
-                self.dashboard_view.update_statistics(StatisticsService().get_scan_statistics())
-            except Exception:
-                pass
+            self._refresh_dashboard()
+        elif row == 4:
+            states = self.scan_controller.scanner.detection_engine.get_engine_states()
+            self.settings_view.update_availability(states)
 
     def _setting_changed(self, key, enabled):
-        attribute = {"clamav_enabled": "clamav_enabled", "yara_enabled": "yara_enabled", "hash_detection_enabled": "hash_enabled"}.get(key)
+        attribute = {
+            "clamav_enabled": "clamav_enabled",
+            "yara_enabled": "yara_enabled",
+            "hash_detection_enabled": "hash_enabled",
+            "virustotal_enabled": "virustotal_enabled",
+        }.get(key)
         if attribute:
             setattr(self.scan_controller.scanner.detection_engine, attribute, enabled)
+        self._update_protection_status()
+        if self.pages.currentIndex() == 0:
+            self._refresh_dashboard()
 
-    def _quarantine_result(self, path, threat_name, sha256):
-        try:
-            self.quarantine_controller.quarantine(path, threat_name, sha256)
-            self.quarantine_view.refresh()
-        except (OSError, ValueError):
-            pass
+    def _update_protection_status(self):
+        if not hasattr(self, "protection_status_text"):
+            return
+        states = self.scan_controller.scanner.detection_engine.get_engine_states()
+        active = sum(
+            bool(state.get("enabled") and state.get("available"))
+            for state in states.values()
+        )
+        self.protection_status_text.setText(
+            f"{active} engine{'s' if active != 1 else ''} active"
+        )
+
+    def _quick_scan_from_dashboard(self):
+        self.navigation.setCurrentIndex(1)
+        QTimer.singleShot(100, self.scan_view.start_quick_scan)
 
     def _show_scan_result(self, result):
-        from antivirus.model.scan_report import ScanReport
-
         if hasattr(result, "results"):
             report = result
         else:
             report = ScanReport()
             report.add_result(result)
         self.results_view.show_report(report)
-        self.navigation.setCurrentRow(2)
+        self.navigation.setCurrentIndex(2)
+
+    def _refresh_dashboard(self):
+        try:
+            statistics = self.statistics_service.get_scan_statistics(hours=None)
+            recent_scans = self.history_controller.recent_scans(limit=4)
+            engine_states = (
+                self.scan_controller.scanner.detection_engine.get_engine_states()
+            )
+            self.dashboard_view.update_dashboard(
+                statistics, recent_scans, engine_states
+            )
+        except (OSError, ValueError):
+            self.protection_status_title.setText("●  Scanner needs attention")
+
+    def closeEvent(self, event):
+        if self._close_confirmed:
+            event.accept()
+            return
+
+        if self.settings_view.has_unsaved_changes():
+            if not self.settings_view.resolve_unsaved_changes():
+                event.ignore()
+                return
+
+        if self.scan_view.is_scanning():
+            answer = QMessageBox.question(
+                self,
+                "Stop scan and close?",
+                "A scan is still running. Do you want to stop it safely and close Premiere Security?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+            self._close_confirmed = True
+            self.scan_view.cancel_active_scan(confirm=False)
+            self.scan_view.scan_idle.connect(self.close)
+            event.ignore()
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Close Premiere Security?",
+            "Do you wish to close the application?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            event.accept()
+        else:
+            event.ignore()

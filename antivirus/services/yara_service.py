@@ -21,7 +21,9 @@ class YaraService:
 
     def _load_rules(self) -> None:
         if not self.rule_dir.exists():
-            raise FileNotFoundError(f"YARA rule directory does not exist: {self.rule_dir}")
+            raise FileNotFoundError(
+                f"YARA rule directory does not exist: {self.rule_dir}"
+            )
 
         rule_files = sorted(self.rule_dir.glob("*.yar"))
         if not rule_files:
@@ -46,6 +48,10 @@ class YaraService:
 
         matches = self._compiler.match(str(path))
         return [
-            {"name": match.rule, "category": match.meta.get("category"), "severity": match.meta.get("severity")}
+            {
+                "name": match.rule,
+                "category": match.meta.get("category"),
+                "severity": match.meta.get("severity"),
+            }
             for match in matches
         ]

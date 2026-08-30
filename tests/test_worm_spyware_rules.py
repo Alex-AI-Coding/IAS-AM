@@ -1,5 +1,3 @@
-import pytest
-
 from antivirus.detection.detection_engine import DetectionEngine
 from antivirus.model.scan_status import ScanStatus
 

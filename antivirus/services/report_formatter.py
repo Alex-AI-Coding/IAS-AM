@@ -1,11 +1,9 @@
 import json
 import csv
 from io import StringIO
-from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from antivirus.model.scan_report import ScanReport
-from antivirus.model.scan_result import ScanResult
 
 
 class ReportFormatter:
@@ -50,34 +48,50 @@ class ReportFormatter:
         output = StringIO()
         writer = csv.writer(output)
 
-        writer.writerow(["File Path", "Status", "SHA256", "Threat Name", "Category", "Severity", "Source", "Detection Methods", "Error Message"])
+        writer.writerow(
+            [
+                "File Path",
+                "Status",
+                "SHA256",
+                "Threat Name",
+                "Category",
+                "Severity",
+                "Source",
+                "Detection Methods",
+                "Error Message",
+            ]
+        )
 
         for result in report.results:
             if result.threats:
                 for threat in result.threats:
-                    writer.writerow([
+                    writer.writerow(
+                        [
+                            result.file_path,
+                            result.status.value,
+                            result.sha256,
+                            threat.name,
+                            threat.category,
+                            threat.severity,
+                            threat.source,
+                            ";".join(result.detection_methods),
+                            result.error_message or "",
+                        ]
+                    )
+            else:
+                writer.writerow(
+                    [
                         result.file_path,
                         result.status.value,
                         result.sha256,
-                        threat.name,
-                        threat.category,
-                        threat.severity,
-                        threat.source,
+                        "",
+                        "",
+                        "",
+                        "",
                         ";".join(result.detection_methods),
                         result.error_message or "",
-                    ])
-            else:
-                writer.writerow([
-                    result.file_path,
-                    result.status.value,
-                    result.sha256,
-                    "",
-                    "",
-                    "",
-                    "",
-                    ";".join(result.detection_methods),
-                    result.error_message or "",
-                ])
+                    ]
+                )
 
         return output.getvalue()
 

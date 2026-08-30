@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify
 from pathlib import Path
-import sys
 
 from antivirus.services.scanner import Scanner
 from antivirus.services.report_formatter import ReportFormatter
@@ -105,7 +104,11 @@ def export_report_api(format_type):
         if format_type == "csv":
             return ReportFormatter.to_csv(report), 200, {"Content-Type": "text/csv"}
         else:
-            return ReportFormatter.to_json(report), 200, {"Content-Type": "application/json"}
+            return (
+                ReportFormatter.to_json(report),
+                200,
+                {"Content-Type": "application/json"},
+            )
     except Exception as exc:
         logger.error(f"Export failed: {exc}")
         return jsonify({"error": str(exc)}), 500
