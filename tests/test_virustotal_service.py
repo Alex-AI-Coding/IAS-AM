@@ -25,7 +25,8 @@ class FakeClient:
         return FakeResponse(self.payload)
 
 
-def test_virustotal_service_disabled_without_api_key():
+def test_virustotal_service_disabled_without_api_key(monkeypatch):
+    monkeypatch.delenv("VIRUSTOTAL_API_KEY", raising=False)
     service = VirusTotalService(api_key=None)
     result = service.lookup_hash("abc123")
 
