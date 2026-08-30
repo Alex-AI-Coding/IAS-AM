@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QLabel,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -16,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from antivirus.view.components import (
+    EmptyState,
     configure_table,
     display_datetime,
     page_header,
@@ -44,6 +44,7 @@ class HistoryView(QWidget):
         self.clear_button = QPushButton("Clear history", self)
         self.clear_button.setProperty("variant", "danger")
         self.clear_button.clicked.connect(self._clear_history)
+        self.clear_button.setEnabled(False)
         heading.addWidget(self.clear_button)
         layout.addLayout(heading)
 
@@ -59,14 +60,16 @@ class HistoryView(QWidget):
         self.table.setColumnWidth(4, 70)
         self.table.setColumnWidth(5, 80)
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.hide()
         layout.addWidget(self.table, 1)
 
-        self.empty_label = QLabel(
-            "No scan history yet. Completed scans will be saved automatically.", self
+        self.empty_state = EmptyState(
+            "○",
+            "No scan history yet",
+            "Completed scans will be saved here automatically.",
+            self,
         )
-        self.empty_label.setProperty("role", "muted")
-        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.empty_label)
+        layout.addWidget(self.empty_state, 1)
 
     def refresh(self):
         self.table.setRowCount(0)
@@ -99,7 +102,7 @@ class HistoryView(QWidget):
                 self.table.setItem(row, column, item)
         has_records = bool(records)
         self.table.setVisible(has_records)
-        self.empty_label.setVisible(not has_records)
+        self.empty_state.setVisible(not has_records)
         self.clear_button.setEnabled(has_records)
 
     def _clear_history(self):

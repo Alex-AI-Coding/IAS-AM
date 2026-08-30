@@ -69,6 +69,7 @@ class ScanChoice(QFrame):
     def __init__(self, symbol, title, description, button_text, parent=None):
         super().__init__(parent)
         self.setObjectName("ScanChoice")
+        self.setFixedHeight(255)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 17)
         layout.setSpacing(8)
@@ -150,7 +151,7 @@ class ScanView(QWidget):
         self.select_folder_button.clicked.connect(self._select_folder)
         for choice in (self.quick_choice, self.file_choice, self.folder_choice):
             choices.addWidget(choice, 1)
-        layout.addLayout(choices, 1)
+        layout.addLayout(choices)
 
         self.progress_card = Card(self, "ProgressCard")
         progress_layout = QVBoxLayout(self.progress_card)
@@ -180,6 +181,7 @@ class ScanView(QWidget):
         progress_layout.addWidget(self.status_label)
         progress_layout.addWidget(self.progress)
         layout.addWidget(self.progress_card)
+        layout.addStretch(1)
 
         note = QLabel(
             "Educational note: Premiere Security demonstrates hash, signature, and optional third-party scanning. "

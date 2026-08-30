@@ -46,6 +46,38 @@ class Card(QFrame):
         self.setObjectName(object_name)
 
 
+class EmptyState(Card):
+    """A single, calm placeholder used instead of repeated empty messages."""
+
+    def __init__(self, symbol: str, title: str, message: str, parent=None):
+        super().__init__(parent, "EmptyState")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 28, 28, 28)
+        layout.setSpacing(7)
+        layout.addStretch()
+
+        icon = QLabel(symbol, self)
+        icon.setProperty("role", "emptyIcon")
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon.setFixedSize(48, 48)
+        self.title_label = QLabel(title, self)
+        self.title_label.setProperty("role", "emptyTitle")
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.message_label = QLabel(message, self)
+        self.message_label.setProperty("role", "muted")
+        self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.message_label.setWordWrap(True)
+
+        layout.addWidget(icon, 0, Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(self.title_label)
+        layout.addWidget(self.message_label)
+        layout.addStretch()
+
+    def set_message(self, title: str, message: str) -> None:
+        self.title_label.setText(title)
+        self.message_label.setText(message)
+
+
 class MetricCard(Card):
     def __init__(self, symbol: str, label: str, value: str = "0", parent=None):
         super().__init__(parent, "MetricCard")

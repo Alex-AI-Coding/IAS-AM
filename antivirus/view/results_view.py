@@ -20,7 +20,12 @@ from PySide6.QtWidgets import (
 )
 
 from antivirus.services.report_formatter import ReportFormatter
-from antivirus.view.components import MetricCard, configure_table, page_header
+from antivirus.view.components import (
+    EmptyState,
+    MetricCard,
+    configure_table,
+    page_header,
+)
 
 
 class ResultsView(QWidget):
@@ -65,18 +70,21 @@ class ResultsView(QWidget):
             metrics.addWidget(card, 1)
         layout.addLayout(metrics)
 
-        toolbar = QHBoxLayout()
-        self.summary = QLabel("No scan has been completed yet.", self)
+        self.results_toolbar = QWidget(self)
+        toolbar = QHBoxLayout(self.results_toolbar)
+        toolbar.setContentsMargins(0, 0, 0, 0)
+        self.summary = QLabel("", self.results_toolbar)
         self.summary.setProperty("role", "muted")
-        self.filter_combo = QComboBox(self)
+        self.filter_combo = QComboBox(self.results_toolbar)
         self.filter_combo.addItems(
             ["All results", "Threats only", "Clean only", "Errors only"]
         )
         self.filter_combo.currentIndexChanged.connect(self._render_rows)
         toolbar.addWidget(self.summary, 1)
-        toolbar.addWidget(QLabel("Show:", self))
+        toolbar.addWidget(QLabel("Show:", self.results_toolbar))
         toolbar.addWidget(self.filter_combo)
-        layout.addLayout(toolbar)
+        layout.addWidget(self.results_toolbar)
+        self.results_toolbar.hide()
 
         self.table = QTableWidget(0, 5, self)
         self.table.setHorizontalHeaderLabels(
@@ -91,14 +99,16 @@ class ResultsView(QWidget):
         self.table.setColumnWidth(4, 120)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.cellDoubleClicked.connect(self._show_details)
+        self.table.hide()
         layout.addWidget(self.table, 1)
 
-        self.empty_label = QLabel(
-            "Your results will appear here after a file, folder, or quick scan.", self
+        self.empty_state = EmptyState(
+            "○",
+            "No scan results yet",
+            "Run a quick scan or choose a file or folder to see results here.",
+            self,
         )
-        self.empty_label.setProperty("role", "muted")
-        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.empty_label)
+        layout.addWidget(self.empty_state, 1)
 
     def show_report(self, report):
         self.report = report
@@ -112,6 +122,7 @@ class ResultsView(QWidget):
         )
         self.export_json_button.setEnabled(True)
         self.export_csv_button.setEnabled(True)
+        self.results_toolbar.show()
         self.filter_combo.setCurrentIndex(0)
         self._render_rows()
 
@@ -119,7 +130,7 @@ class ResultsView(QWidget):
         self.table.setRowCount(0)
         if self.report is None:
             self.table.hide()
-            self.empty_label.show()
+            self.empty_state.show()
             return
 
         filter_index = self.filter_combo.currentIndex()
@@ -164,11 +175,15 @@ class ResultsView(QWidget):
 
         has_rows = bool(results)
         self.table.setVisible(has_rows)
-        self.empty_label.setVisible(not has_rows)
+        self.empty_state.setVisible(not has_rows)
         if self.report.results and not has_rows:
-            self.empty_label.setText("No results match this filter.")
+            self.empty_state.set_message(
+                "No matching results", "Choose a different result filter to continue."
+            )
         elif not self.report.results:
-            self.empty_label.setText("The selected location did not contain any files.")
+            self.empty_state.set_message(
+                "No files found", "The selected location did not contain any files."
+            )
 
     def _show_details(self, row, _column):
         item = self.table.item(row, 0)
@@ -197,7 +212,7 @@ class ResultsView(QWidget):
         path, _ = QFileDialog.getSaveFileName(
             self,
             f"Export {format_name.upper()} report",
-            f"ias-defender-report.{extension}",
+            f"premiere-security-report.{extension}",
             f"{format_name.upper()} files (*.{extension})",
         )
         if not path:

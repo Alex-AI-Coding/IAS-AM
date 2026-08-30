@@ -14,7 +14,7 @@ The project deliberately favors a clear workflow over enterprise-level complexit
 
 - **Dashboard** — protection status, totals, active engines, and recent activity
 - **Desktop navigation** — clear page tabs stay at the top of the application
-- **Accessible visual design** — larger text and controls with a low-glare gray-green palette
+- **Accessible visual design** — larger text and controls with a low-glare cream-and-sage palette
 - **Guided scanning** — Quick Scan for Desktop/Downloads/Documents, single-file scan, or recursive folder scan
 - **Responsive progress** — accurate file counts, background scanning, and safe cancellation
 - **Results workspace** — filters, detailed findings, and JSON/CSV report export

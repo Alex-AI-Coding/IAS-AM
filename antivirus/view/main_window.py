@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QFrame,
+    QButtonGroup,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QStackedWidget,
-    QTabBar,
     QVBoxLayout,
     QWidget,
 )
@@ -19,12 +19,52 @@ from antivirus.controller.history_controller import HistoryController
 from antivirus.controller.scan_controller import ScanController
 from antivirus.model.scan_report import ScanReport
 from antivirus.services.statistics_service import StatisticsService
-from antivirus.view.dashboard_view import DashboardView
 from antivirus.view.branding import AppLogo
+from antivirus.view.dashboard_view import DashboardView
 from antivirus.view.history_view import HistoryView
 from antivirus.view.results_view import ResultsView
 from antivirus.view.scan_view import ScanView
 from antivirus.view.settings_view import SettingsView
+
+
+class TopNavigation(QWidget):
+    """Predictable top navigation that never shortens page names."""
+
+    currentChanged = Signal(int)
+
+    def __init__(self, page_names, parent=None):
+        super().__init__(parent)
+        self._current_index = -1
+        self._buttons: list[QPushButton] = []
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        for index, name in enumerate(page_names):
+            button = QPushButton(name, self)
+            button.setCheckable(True)
+            button.setProperty("nav", True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(
+                lambda _checked=False, page=index: self.setCurrentIndex(page)
+            )
+            self._group.addButton(button, index)
+            self._buttons.append(button)
+            layout.addWidget(button)
+
+    def setCurrentIndex(self, index: int) -> None:
+        if not 0 <= index < len(self._buttons):
+            return
+        self._buttons[index].setChecked(True)
+        if index == self._current_index:
+            return
+        self._current_index = index
+        self.currentChanged.emit(index)
+
+    def currentIndex(self) -> int:
+        return self._current_index
 
 
 class MainWindow(QMainWindow):
@@ -57,7 +97,7 @@ class MainWindow(QMainWindow):
 
         top_bar = QWidget(root)
         top_bar.setObjectName("TopBar")
-        top_bar.setFixedHeight(82)
+        top_bar.setFixedHeight(78)
         top_layout = QHBoxLayout(top_bar)
         top_layout.setContentsMargins(22, 0, 22, 0)
         top_layout.setSpacing(16)
@@ -73,32 +113,14 @@ class MainWindow(QMainWindow):
         brand_text.addWidget(brand_title)
         brand_text.addWidget(brand_subtitle)
 
-        self.navigation = QTabBar(top_bar)
+        self.navigation = TopNavigation(self.PAGE_NAMES, top_bar)
         self.navigation.setObjectName("TopNavigation")
-        self.navigation.setDrawBase(False)
-        self.navigation.setExpanding(False)
-        self.navigation.setElideMode(Qt.TextElideMode.ElideRight)
-        for page_name in self.PAGE_NAMES:
-            self.navigation.addTab(page_name)
-
-        status_card = QFrame(top_bar)
-        status_card.setObjectName("TopStatus")
-        status_card.setMinimumWidth(158)
-        status_layout = QVBoxLayout(status_card)
-        status_layout.setContentsMargins(12, 8, 12, 8)
-        status_layout.setSpacing(1)
-        self.protection_status_title = QLabel("●  Protection ready", status_card)
-        self.protection_status_title.setProperty("role", "topStatusTitle")
-        self.protection_status_text = QLabel("Core engines available", status_card)
-        self.protection_status_text.setProperty("role", "topStatusText")
-        status_layout.addWidget(self.protection_status_title)
-        status_layout.addWidget(self.protection_status_text)
 
         top_layout.addWidget(mark)
         top_layout.addLayout(brand_text)
-        top_layout.addSpacing(12)
-        top_layout.addWidget(self.navigation, 1)
-        top_layout.addWidget(status_card)
+        top_layout.addSpacing(24)
+        top_layout.addWidget(self.navigation)
+        top_layout.addStretch()
 
         self.pages = QStackedWidget(root)
         self.pages.setObjectName("PageStack")
@@ -156,7 +178,6 @@ class MainWindow(QMainWindow):
             self._setting_changed(key, enabled)
         states = self.scan_controller.scanner.detection_engine.get_engine_states()
         self.settings_view.update_availability(states)
-        self._update_protection_status()
 
     def _page_changed(self, row):
         if row == 3:
@@ -176,21 +197,8 @@ class MainWindow(QMainWindow):
         }.get(key)
         if attribute:
             setattr(self.scan_controller.scanner.detection_engine, attribute, enabled)
-        self._update_protection_status()
         if self.pages.currentIndex() == 0:
             self._refresh_dashboard()
-
-    def _update_protection_status(self):
-        if not hasattr(self, "protection_status_text"):
-            return
-        states = self.scan_controller.scanner.detection_engine.get_engine_states()
-        active = sum(
-            bool(state.get("enabled") and state.get("available"))
-            for state in states.values()
-        )
-        self.protection_status_text.setText(
-            f"{active} engine{'s' if active != 1 else ''} active"
-        )
 
     def _quick_scan_from_dashboard(self):
         self.navigation.setCurrentIndex(1)
@@ -216,7 +224,10 @@ class MainWindow(QMainWindow):
                 statistics, recent_scans, engine_states
             )
         except (OSError, ValueError):
-            self.protection_status_title.setText("●  Scanner needs attention")
+            self.dashboard_view.protection_title.setText("Scanner needs attention")
+            self.dashboard_view.protection_detail.setText(
+                "Protection details could not be loaded. Try reopening the application."
+            )
 
     def closeEvent(self, event):
         if self._close_confirmed:

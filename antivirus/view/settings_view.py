@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSettings, Signal
+from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -33,35 +32,39 @@ class SettingRow(QFrame):
         description_label.setWordWrap(True)
         text.addWidget(title_label)
         text.addWidget(description_label)
-        self.state_label = status_pill(
-            "Enabled" if checked else "Off", "active" if checked else "inactive"
-        )
-        self.checkbox = QCheckBox(self)
+        self.state_label = status_pill("Unavailable", "warning")
+        self.state_label.hide()
+        self.checkbox = QPushButton(self)
+        self.checkbox.setCheckable(True)
+        self.checkbox.setProperty("toggle", True)
+        self.checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
         self.checkbox.setChecked(checked)
         self.checkbox.toggled.connect(self._toggle_display)
+        self._toggle_display(checked)
         layout.addLayout(text, 1)
         layout.addWidget(self.state_label)
         layout.addWidget(self.checkbox)
 
     def _toggle_display(self, checked):
-        self.state_label.setText("Enabled" if checked else "Off")
-        self.state_label.setProperty("status", "active" if checked else "inactive")
-        self.state_label.style().unpolish(self.state_label)
-        self.state_label.style().polish(self.state_label)
+        self.checkbox.setText("On" if checked else "Off")
 
     def set_availability(self, available: bool, unavailable_text: str):
         if available:
             self.checkbox.setEnabled(True)
+            self.checkbox.show()
+            self.state_label.hide()
             self._toggle_display(self.checkbox.isChecked())
         else:
             self.checkbox.blockSignals(True)
             self.checkbox.setChecked(False)
             self.checkbox.blockSignals(False)
             self.checkbox.setEnabled(False)
+            self.checkbox.hide()
             self.state_label.setText(unavailable_text)
             self.state_label.setProperty("status", "warning")
             self.state_label.style().unpolish(self.state_label)
             self.state_label.style().polish(self.state_label)
+            self.state_label.show()
 
 
 class SettingsView(QWidget):

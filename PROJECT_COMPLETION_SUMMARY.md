@@ -7,7 +7,7 @@ Premiere Security is complete as an educational antivirus school project. The ba
 ## Completed functionality
 
 - Polished PySide6 desktop interface with top navigation and a distinct shield logo
-- Larger typography, taller controls, and a low-glare accessible color palette
+- Larger typography, taller controls, and a low-glare cream-and-sage color palette
 - Dashboard with scan totals, engine state, and recent activity
 - Quick, single-file, and recursive folder scanning
 - Background scan worker, accurate progress totals, and cancellation
