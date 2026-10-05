@@ -21,7 +21,7 @@ class SettingRow(QFrame):
         super().__init__(parent)
         self.key = key
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 11, 0, 11)
+        layout.setContentsMargins(0, 8, 0, 8)
         layout.setSpacing(12)
         text = QVBoxLayout()
         text.setSpacing(2)
@@ -56,7 +56,6 @@ class SettingRow(QFrame):
             self._toggle_display(self.checkbox.isChecked())
         else:
             self.checkbox.blockSignals(True)
-            self.checkbox.setChecked(False)
             self.checkbox.blockSignals(False)
             self.checkbox.setEnabled(False)
             self.checkbox.hide()
@@ -87,12 +86,24 @@ class SettingsView(QWidget):
             "clamav_enabled",
             "ClamAV integration",
             "Adds scanning from a locally running ClamAV service when available.",
-            True,
+            False,
         ),
         (
             "virustotal_enabled",
             "VirusTotal reputation",
             "Sends only the file hash—not file contents—to VirusTotal when explicitly enabled.",
+            False,
+        ),
+        (
+            "download_monitor_enabled",
+            "Monitor new downloads",
+            "Checks stable new or changed files in Downloads. Alerts only; file opening is not blocked.",
+            False,
+        ),
+        (
+            "reduced_motion",
+            "Reduce animation",
+            "Keeps the scan radar still while preserving progress and status updates.",
             False,
         ),
     )
@@ -124,7 +135,7 @@ class SettingsView(QWidget):
         engines_layout = QVBoxLayout(engines)
         engines_layout.setContentsMargins(20, 18, 20, 18)
         engines_layout.setSpacing(2)
-        engines_layout.addWidget(section_title("Detection engines"))
+        engines_layout.addWidget(section_title("Detection and preferences"))
         for key, title, description, default in self.SETTINGS:
             checked = self.settings.value(key, default, type=bool)
             self._saved_values[key] = checked
@@ -140,9 +151,10 @@ class SettingsView(QWidget):
         privacy_layout.setSpacing(7)
         privacy_layout.addWidget(section_title("Privacy and storage"))
         privacy_text = QLabel(
-            "Scans run locally by default. History contains summary information only, "
-            "and file contents are not stored by the application. VirusTotal is the only "
-            "online option and requires a VIRUSTOTAL_API_KEY in the project .env file.",
+            "Scans run locally by default. History stores paths, times, counts, and detection summaries; "
+            "it does not store file contents. Exported reports may reveal sensitive file names. "
+            "VirusTotal receives hashes only when enabled; hashes can identify known files. "
+            "Download monitoring is optional and does not quarantine or delete files.",
             privacy,
         )
         privacy_text.setProperty("role", "muted")
@@ -170,6 +182,12 @@ class SettingsView(QWidget):
     def values(self) -> dict[str, bool]:
         return dict(self._saved_values)
 
+    def set_saved_value(self, key, enabled):
+        self.settings.setValue(key, enabled)
+        self._saved_values[key] = enabled
+        self.rows[key].checkbox.setChecked(enabled)
+        self._update_dirty_state()
+
     def _current_values(self) -> dict[str, bool]:
         return {key: row.checkbox.isChecked() for key, row in self.rows.items()}
 
@@ -178,6 +196,7 @@ class SettingsView(QWidget):
 
     def update_availability(self, states):
         mapping = {
+            "hash_detection_enabled": ("hash", "Catalogue unavailable"),
             "yara_enabled": ("yara", "Rules unavailable"),
             "clamav_enabled": ("clamav", "Not installed"),
             "virustotal_enabled": ("virustotal", "API key needed"),
@@ -185,11 +204,7 @@ class SettingsView(QWidget):
         for setting_key, (engine_key, message) in mapping.items():
             available = bool(states.get(engine_key, {}).get("available"))
             self.rows[setting_key].set_availability(available, message)
-            if not available:
-                if self._saved_values.get(setting_key) is not False:
-                    self.settings.setValue(setting_key, False)
-                    self._saved_values[setting_key] = False
-                    self.setting_changed.emit(setting_key, False)
+            # Preserve the user's preference during a temporary integration outage.
         self._update_dirty_state()
 
     def restore_defaults(self):
@@ -214,6 +229,21 @@ class SettingsView(QWidget):
             return True
 
         current = self._current_values()
+        if not any(
+            current[key]
+            for key in (
+                "hash_detection_enabled",
+                "yara_enabled",
+                "clamav_enabled",
+                "virustotal_enabled",
+            )
+        ):
+            QMessageBox.warning(
+                self,
+                "Choose a detection engine",
+                "Enable at least one detection engine before saving.",
+            )
+            return False
         disabled_titles = [
             title
             for key, title, _description, _default in self.SETTINGS
@@ -244,12 +274,15 @@ class SettingsView(QWidget):
             if answer != QMessageBox.StandardButton.Save:
                 return False
 
+        changes = []
         for key, enabled in current.items():
             if self._saved_values.get(key) != enabled:
                 self.settings.setValue(key, enabled)
-                self.setting_changed.emit(key, enabled)
+                changes.append((key, enabled))
         self.settings.sync()
         self._saved_values = current
+        for key, enabled in changes:
+            self.setting_changed.emit(key, enabled)
         self._update_dirty_state()
         return True
 

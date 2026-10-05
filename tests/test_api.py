@@ -46,12 +46,13 @@ class FakeScanner:
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
     fake_scanner = FakeScanner()
     monkeypatch.setattr(api, "scanner", fake_scanner)
-    app = api.create_app()
+    app = api.create_app({"API_TOKEN": "t" * 48, "SCAN_ROOT": str(tmp_path)})
     app.config.update(TESTING=True)
     with app.test_client() as client:
+        client.environ_base["HTTP_AUTHORIZATION"] = "Bearer " + "t" * 48
         yield client
 
 
@@ -77,7 +78,7 @@ def test_scan_file_api_rejects_non_json_or_invalid_target(client):
 
 
 def test_scan_file_api_nonexistent_target(client):
-    response = client.post("/api/v1/scan", json={"target": "/nonexistent/file.bin"})
+    response = client.post("/api/v1/scan", json={"target": "missing-file.bin"})
     assert response.status_code == 404
 
 

@@ -17,5 +17,5 @@ def test_main_scan_cli_handles_missing_file():
         text=True,
     )
 
-    assert result.returncode == 0
+    assert result.returncode == 2
     assert '"status": "error"' in result.stdout

@@ -5,7 +5,7 @@ from antivirus.model.scan_status import ScanStatus
 def test_worm_network_replication_detection(tmp_path):
     engine = DetectionEngine()
     test_file = tmp_path / "worm_test.bin"
-    test_file.write_text("CreateRemoteThread bind payload")
+    test_file.write_text("EDU_WORM_PAYLOAD CreateRemoteThread bind payload")
 
     result = engine.analyze_file(str(test_file))
 
@@ -17,7 +17,7 @@ def test_worm_network_replication_detection(tmp_path):
 def test_worm_file_replication_detection(tmp_path):
     engine = DetectionEngine()
     test_file = tmp_path / "worm_replicator.bin"
-    test_file.write_text("CopyFileA System32 propagate")
+    test_file.write_text("EDU_WORM_PAYLOAD CopyFileA System32 propagate")
 
     result = engine.analyze_file(str(test_file))
 
@@ -29,7 +29,7 @@ def test_worm_file_replication_detection(tmp_path):
 def test_worm_mass_emailer_detection(tmp_path):
     engine = DetectionEngine()
     test_file = tmp_path / "worm_mailer.bin"
-    test_file.write_text("SMTP SendMailA Outlook AddressBook")
+    test_file.write_text("EDU_WORM_PAYLOAD SMTP SendMailA Outlook AddressBook")
 
     result = engine.analyze_file(str(test_file))
 
@@ -41,7 +41,7 @@ def test_worm_mass_emailer_detection(tmp_path):
 def test_spyware_keylogger_detection(tmp_path):
     engine = DetectionEngine()
     test_file = tmp_path / "keylogger.bin"
-    test_file.write_text("SetWindowsHookExA GetKeyState WM_KEYDOWN")
+    test_file.write_text("EDU_SPYWARE_PAYLOAD SetWindowsHookExA GetKeyState WM_KEYDOWN")
 
     result = engine.analyze_file(str(test_file))
 
@@ -53,7 +53,7 @@ def test_spyware_keylogger_detection(tmp_path):
 def test_spyware_screen_capture_detection(tmp_path):
     engine = DetectionEngine()
     test_file = tmp_path / "screen_spy.bin"
-    test_file.write_text("GetDC BitBlt Screenshot")
+    test_file.write_text("EDU_SPYWARE_PAYLOAD GetDC BitBlt Screenshot")
 
     result = engine.analyze_file(str(test_file))
 
@@ -65,7 +65,7 @@ def test_spyware_screen_capture_detection(tmp_path):
 def test_spyware_data_thief_detection(tmp_path):
     engine = DetectionEngine()
     test_file = tmp_path / "data_thief.bin"
-    test_file.write_text("Cookie Password Email Clipboard")
+    test_file.write_text("EDU_SPYWARE_PAYLOAD Cookie Password Email Clipboard")
 
     result = engine.analyze_file(str(test_file))
 
@@ -77,7 +77,7 @@ def test_spyware_data_thief_detection(tmp_path):
 def test_spyware_remote_access_detection(tmp_path):
     engine = DetectionEngine()
     test_file = tmp_path / "backdoor.bin"
-    test_file.write_text("bind cmd.exe Remote")
+    test_file.write_text("EDU_SPYWARE_PAYLOAD bind cmd.exe Remote")
 
     result = engine.analyze_file(str(test_file))
 

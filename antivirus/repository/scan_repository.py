@@ -17,8 +17,7 @@ class ScanRepository:
     def _initialize(self) -> None:
         connection = sqlite3.connect(self.db_path)
         try:
-            connection.execute(
-                """
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS scan_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     started_at TEXT NOT NULL,
@@ -29,8 +28,7 @@ class ScanRepository:
                     error_files INTEGER NOT NULL,
                     status TEXT NOT NULL
                 )
-                """
-            )
+                """)
             existing_columns = {
                 row[1] for row in connection.execute("PRAGMA table_info(scan_history)")
             }
@@ -39,6 +37,8 @@ class ScanRepository:
                 "scan_type": "TEXT NOT NULL DEFAULT 'custom'",
                 "duration": "REAL NOT NULL DEFAULT 0",
                 "threats": "TEXT NOT NULL DEFAULT '[]'",
+                "skipped_files": "INTEGER NOT NULL DEFAULT 0",
+                "warnings": "TEXT NOT NULL DEFAULT '[]'",
             }
             for column, declaration in migrations.items():
                 if column not in existing_columns:
@@ -62,6 +62,8 @@ class ScanRepository:
         scan_type: str = "custom",
         duration: float = 0.0,
         threats: Optional[List[Dict[str, Any]]] = None,
+        skipped_files: int = 0,
+        warnings: list[str] | None = None,
     ) -> Dict[str, Any]:
         import datetime
 
@@ -85,8 +87,8 @@ class ScanRepository:
                     target,
                     scan_type,
                     duration,
-                    threats
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    threats, skipped_files, warnings
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     started_value,
@@ -100,6 +102,8 @@ class ScanRepository:
                     scan_type,
                     duration,
                     json.dumps(threats or []),
+                    skipped_files,
+                    json.dumps(warnings or []),
                 ),
             )
             connection.commit()
@@ -120,20 +124,23 @@ class ScanRepository:
             "scan_type": scan_type,
             "duration": duration,
             "threats": threats or [],
+            "skipped_files": skipped_files,
+            "warnings": warnings or [],
         }
 
-    def get_recent_scans(self, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_recent_scans(self, limit: int | None = 10) -> List[Dict[str, Any]]:
         connection = sqlite3.connect(self.db_path)
         try:
             rows = connection.execute(
                 """
                 SELECT id, started_at, completed_at, file_count, threats_found,
-                       clean_files, error_files, status, target, scan_type, duration, threats
+                       clean_files, error_files, status, target, scan_type, duration, threats,
+                       skipped_files, warnings
                 FROM scan_history
                 ORDER BY id DESC
                 LIMIT ?
                 """,
-                (limit,),
+                (-1 if limit is None else max(0, int(limit)),),
             ).fetchall()
         finally:
             connection.close()
@@ -158,9 +165,19 @@ class ScanRepository:
                     "scan_type": row[9],
                     "duration": row[10],
                     "threats": threats,
+                    "skipped_files": row[12],
+                    "warnings": self._read_list(row[13]),
                 }
             )
         return records
+
+    @staticmethod
+    def _read_list(value):
+        try:
+            parsed = json.loads(value or "[]")
+            return parsed if isinstance(parsed, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
 
     def clear_history(self) -> int:
         """Delete scan-history rows and return the number removed."""

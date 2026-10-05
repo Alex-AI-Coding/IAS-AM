@@ -1,43 +1,26 @@
-# Premiere Security Quick Start
+# Premiere Security: start here
 
-## First-time setup on Windows
+1. Open the **IAS-AM root folder** in VS Code.
+2. Run these commands in its PowerShell terminal:
 
 ```powershell
-git clone https://github.com/Alex-AI-Coding/IAS-AM.git
-cd IAS-AM
 py -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m antivirus.frontend_main
 ```
 
-## Start the desktop app
+3. Select `.venv\Scripts\python.exe` with **Python: Select Interpreter**.
+4. Open **Scan → Choose folder** and select `demo_samples`.
+5. Observe the radar and progress. Review detections and skipped/error entries in Results.
+6. Export JSON, CSV or Signed JSON; show History and engine availability.
+7. For a hash-match demo, run `python scripts/prepare_demo.py` with your selected interpreter.
+
+The app checks files without executing them. The samples are harmless text. “No matches” is not a safety guarantee. The optional download monitor is an alerting tool and does not block execution.
+
+Tests:
 
 ```powershell
-python -m antivirus.frontend_main
+.venv\Scripts\python.exe -m pytest tests -q
 ```
 
-No Docker container or Flask server is required for the desktop interface.
-
-## Demonstrate a detection safely
-
-```powershell
-Set-Content demo-threat.txt "EDU_RANSOMWARE_PAYLOAD encrypt_all_files ransom_note"
-```
-
-In Premiere Security:
-
-1. Open **Scan**.
-2. Select **Choose file**.
-3. Open `demo-threat.txt`.
-4. Review the detection in **Scan results**.
-5. Optionally export the result as a JSON or CSV report.
-
-The sample is harmless text designed only to trigger the educational YARA rule.
-
-## Run the tests
-
-```powershell
-python -m pytest tests -q
-```
-
-For optional ClamAV, VirusTotal, API, CLI, and Docker instructions, see [README.md](README.md).
+[Full setup, API and signing instructions](README.md) · [IAS audit and presentation guide](docs/IAS-ENGINEERING-REVIEW.md)

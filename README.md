@@ -1,162 +1,170 @@
-# Premiere Security
+# Premiere Security 1.1
 
-Premiere Security is a small, desktop antivirus demonstration created for an Information Assurance and Security (IAS) school project. It combines a polished PySide6 interface with hash matching, educational YARA rules, optional ClamAV scanning, optional VirusTotal hash reputation, scan history, report export, a CLI, and a Flask API.
+A desktop file-scanning project for Information Assurance and Security (IAS). It combines a PySide6 interface, exact SHA-256 catalogue matching, educational YARA signatures, optional ClamAV, opt-in VirusTotal hash reputation, reports, local history, a CLI and a restricted Flask API.
 
-The project deliberately favors a clear workflow over enterprise-level complexity:
+![Scan page with radar activity](docs/screenshots/scan-radar.png)
 
-1. Choose a Quick, File, or Folder scan.
-2. Review clean, suspicious, and error results.
-3. Inspect detections and export the report for documentation.
+**Scope:** this is a classroom scanner. A “No matches” result means that the enabled checks found no known signature; it does not prove a file is safe. The application does not execute files or claim to replace a maintained antivirus. Included demonstration files are harmless text.
 
-> **Academic scope:** Premiere Security is an educational scanner, not a replacement for Microsoft Defender or another maintained commercial antivirus. Its included YARA rules use harmless demonstration patterns. Real-world protection depends on regularly updated signatures, hardened isolation, real-time monitoring, and professionally maintained detection infrastructure.
+## Start in VS Code on Windows
 
-## Desktop features
-
-- **Dashboard** — protection status, totals, active engines, and recent activity
-- **Desktop navigation** — clear page tabs stay at the top of the application
-- **Accessible visual design** — larger text and controls with a low-glare cream-and-sage palette
-- **Guided scanning** — Quick Scan for Desktop/Downloads/Documents, single-file scan, or recursive folder scan
-- **Responsive progress** — accurate file counts, background scanning, and safe cancellation
-- **Results workspace** — filters, detailed findings, and JSON/CSV report export
-- **Persistent history** — scan type, target, totals, duration, threats, and outcome
-- **Settings** — enable only installed/configured engines and understand their privacy behavior
-- **Fresh-clone reliability** — application data directories and SQLite databases are created automatically
-
-## Detection engines
-
-| Engine | Default | Purpose |
-|---|---:|---|
-| SHA-256 hash catalog | On | Matches files against the local threat repository |
-| YARA rules | On | Detects the included trojan, ransomware, worm, and spyware demonstration patterns |
-| ClamAV | On when available | Uses a locally running ClamAV daemon for additional scanning |
-| VirusTotal | Off | Sends only a SHA-256 hash for online reputation when an API key is configured and the user enables it |
-
-Missing optional engines do not crash the application. The UI labels them as unavailable and continues with the local engines that are ready.
-
-## Requirements
-
-- Python 3.12 or newer
-- Windows 10/11, macOS, or a Linux desktop supported by PySide6
-- ClamAV only if you want the optional ClamAV engine
-- A VirusTotal API key only if you want optional online hash reputation
-
-## Run the desktop application on Windows
+Open the repository **root** folder, `IAS-AM`, then use its terminal:
 
 ```powershell
-git clone https://github.com/Alex-AI-Coding/IAS-AM.git
-cd IAS-AM
-
 py -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-
-python -m antivirus.frontend_main
+.venv\Scripts\python.exe -m pip install --upgrade pip
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m antivirus.frontend_main
 ```
 
-If PowerShell blocks virtual-environment activation, run this once in the same terminal:
+These commands work without activating the environment or changing PowerShell execution policy. In VS Code, run **Python: Select Interpreter** and choose `.venv\Scripts\python.exe`.
+
+Python 3.12+ is required. The desktop app runs independently of Flask and Docker. The former `IAS-AM-main` duplicate source tree has been consolidated into this root; its README points here.
+
+## Features
+
+| Workspace | Function |
+|---|---|
+| Dashboard | Lifetime scan totals, honest engine availability, empty catalogue notice, recent activity |
+| Scan | File, recursive folder and Quick scan; background worker; progress; native radar; safe cancellation |
+| Results | Status filters, file/detection search, pagination, per-engine details, SHA-256 and durations |
+| Reports | JSON and CSV exports; CSV formula escaping; signed JSON with trusted-key verification |
+| History | SQLite summaries, UTC start/end times, targets, detections, skipped entries and warnings |
+| Network | Optional on-demand, read-only connection snapshot without packet capture or process termination |
+| Settings | Saved engine preferences, opt-in stable-download monitoring, reduced motion, privacy information |
+| CLI / API | Structured reports, useful CLI exit codes, authenticated and folder-restricted API |
+
+All scans are read-only. Optional download monitoring checks stable **new or changed** files, keeps summaries in History and posts a status-bar alert. It does not block file opening or move/delete files. Existing downloads require a manual scan. Monitoring is off by default and stops safely on application close. Changing engine settings stops an existing monitor; enable it again to use the new settings.
+
+## Detection and limits
+
+| Engine | Default | Behavior |
+|---|---|---|
+| SHA-256 catalogue | On | Exact matching; new installations have an empty catalogue |
+| YARA | On | Demonstration markers plus pattern combinations; missing/broken rules make scans incomplete |
+| ClamAV | Off in desktop settings; auto-available in headless scanner | Optional local daemon at `127.0.0.1:3310`; errors are not treated as clean |
+| VirusTotal | Off | Optional HTTPS hash lookup; never uploads contents; unknown/quota/error states are distinguished |
+
+Files larger than **256 MiB** are skipped. Folder discovery stops at **25,000 files** with a visible warning. Links, junctions and special files are skipped. YARA has a **10-second match timeout**. VirusTotal requests have an **8-second network timeout**, a short in-memory cache and a **15-second minimum interval per service instance**. For bulk scans, leave VirusTotal off; quotas from your provider still apply.
+
+An enabled engine failure produces an error or an incomplete-check warning while retaining any detections from other engines. A scan with no working detection engine does not receive a clean verdict. Missing folders, cancelled scans, empty folders and skipped files remain distinguishable.
+
+## Safe classroom demo
+
+The `demo_samples` directory contains a clean sample and clearly marked demonstration files for ransomware, trojan, worm and spyware. Open **Scan → Choose folder** and select that directory.
+
+To demonstrate exact hash matching, seed the one harmless catalogue sample:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass
+.venv\Scripts\python.exe scripts\prepare_demo.py
 ```
 
-The desktop app does not require the Flask API or Docker to be running.
+Scan `demo_samples\hash-match-demo.txt`. Editing its contents changes its SHA-256 and therefore breaks the exact match. The seeded entry is explicitly labelled educational; it is not a malware feed.
 
-## Safe classroom demonstration
+See [the IAS engineering review and presentation guide](docs/IAS-ENGINEERING-REVIEW.md) for the complete feature audit, original bugs, all course chapters, a risk register, policies, a recovery procedure and the improvement roadmap.
 
-The included rules recognize harmless text indicators so the detection and reporting workflow can be demonstrated without real malware.
+## Signed reports
 
-Create a demonstration file:
+On Results, choose **Signed JSON**. The application generates an Ed25519 key pair on first use and signs a canonical JSON representation. Keys live under `antivirus_data/keys` or your configured data directory.
+
+- `report-signing.pem` is the private key. Keep it private.
+- `report-public.pem` is the public verification key. Share it through an independently trusted channel.
+- The exported bundle includes the report, signature, public key and key fingerprint.
+
+Verify with a public key you already trust:
 
 ```powershell
-Set-Content demo-threat.txt "EDU_RANSOMWARE_PAYLOAD encrypt_all_files ransom_note"
+.venv\Scripts\python.exe main.py verify-report report.signed.json --public-key antivirus_data\keys\report-public.pem
 ```
 
-Then open Premiere Security, choose **Scan a file**, and select `demo-threat.txt`. The result should be marked suspicious by the YARA engine. You can show its details and export the report afterward.
+Changing a report or substituting another key makes verification fail. The embedded key alone does not establish identity. The demo uses a local software key, not a certificate authority or a tamper-proof identity system. The private key is unencrypted; POSIX creation permissions are restricted, while Windows access depends on the account's folder ACLs.
 
-## Optional VirusTotal setup
+## Optional VirusTotal
 
-Copy `.env.example` to `.env` and add your API key:
-
-```env
-VIRUSTOTAL_API_KEY=your_api_key_here
-```
-
-Restart the desktop app, open **Settings**, and enable **VirusTotal reputation**. Only the file's SHA-256 hash is submitted; Premiere Security does not upload file contents.
+Copy `.env.example` to `.env`, add `VIRUSTOTAL_API_KEY`, restart, then enable VirusTotal in Settings. Hashes may identify known confidential files, so opt in only when that is appropriate. Exported reports and history also contain potentially sensitive paths.
 
 ## CLI
 
 ```powershell
-# JSON is the default output
-python main.py scan "C:\path\to\file.exe"
-
-# Scan a directory and return CSV
-python main.py scan "C:\path\to\folder" --format csv
+.venv\Scripts\python.exe main.py scan demo_samples\clean.txt
+.venv\Scripts\python.exe main.py scan demo_samples --format csv
 ```
 
-## REST API
+Exit codes: **0** = completed with no matches, **1** = detections found, **2** = error/incomplete/empty/cancelled scan or failed signature verification. If a scan finds a detection and has another failure, the report retains both facts and returns 1; scripts should inspect `summary.incomplete_files` and `warnings` as well.
 
-Start the API:
+## Restricted local REST API
+
+The desktop app does not need this API. All `/api/*` routes require a Bearer token; `/health` is public. Without a configured token of at least 32 characters, scanning routes return 503.
+
+Generate a random token:
 
 ```powershell
-python -m flask --app antivirus.api run --port 5000
+.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-Available endpoints:
+Place it in `.env` as `ANTIVIRUS_API_TOKEN`. Set `ANTIVIRUS_API_SCAN_ROOT` to the folder the API is allowed to scan; `.env.example` uses `demo_samples`. Start on localhost:
+
+```powershell
+.venv\Scripts\python.exe -m flask --app antivirus.api run --host 127.0.0.1 --port 5000
+```
+
+In a separate PowerShell terminal, using your token:
+
+```powershell
+$iasToken = Read-Host "API token"
+$iasHeaders = @{ Authorization = "Bearer $iasToken" }
+$iasBody = @{ target = "clean.txt" } | ConvertTo-Json
+Invoke-RestMethod -Uri http://127.0.0.1:5000/api/v1/scan -Method Post -Headers $iasHeaders -ContentType "application/json" -Body $iasBody
+```
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | `/health` | Confirm that the API is running |
-| POST | `/api/v1/scan` | Scan one file or directory |
-| POST | `/api/v1/scan/batch` | Scan a list of targets |
-| POST | `/api/v1/report/json` | Scan and return a JSON report |
-| POST | `/api/v1/report/csv` | Scan and return a CSV report |
+| GET | `/health` | Server liveness |
+| POST | `/api/v1/scan` | Scan a path within the allowed root |
+| POST | `/api/v1/scan/batch` | Scan 1–32 validated targets; duplicates are consolidated |
+| POST | `/api/v1/report/json` | Scan and return JSON |
+| POST | `/api/v1/report/csv` | Scan and download escaped CSV |
 
-Example:
+Malformed requests return 400; unauthorized requests 401; outside-root or linked paths 403; missing targets 404; oversized bodies 413; busy scanning 429. Every target is validated before a batch starts. Request bodies are capped at 16 KiB and each app instance permits one active scan. API/CLI scans return reports; desktop scans and download monitoring persist history.
 
-```powershell
-curl.exe -X POST http://localhost:5000/api/v1/scan `
-  -H "Content-Type: application/json" `
-  -d '{"target":"C:\\path\\to\\sample.txt"}'
-```
+This is a local demonstration API using a shared capability token. It has no per-user roles, token expiry or MFA. Keep the development server local; a remote deployment would need a production server, HTTPS termination, per-user authorization, stronger isolation and deployment-wide rate limits.
 
 ## Docker
-
-Docker is intended for the headless API and automated tests:
 
 ```powershell
 docker compose up --build antivirus-api
 docker compose --profile test run --rm antivirus-tests
 ```
 
-Run the visible desktop application directly on the host with `python -m antivirus.frontend_main`.
+Docker publishes only on `127.0.0.1:5000` and mounts `demo_samples` read-only at `/app/scan_targets`. The API token is still required. The visible desktop app runs on the host.
 
-## Tests and quality checks
+## Validation
 
 ```powershell
-python -m pytest tests -q
-black --check antivirus tests
-flake8 antivirus tests
+.venv\Scripts\python.exe -m pytest tests -q
+.venv\Scripts\python.exe -m black --check antivirus tests main.py scripts
+.venv\Scripts\python.exe -m flake8 antivirus tests main.py scripts
+.venv\Scripts\python.exe -m pip check
 ```
 
-The suite covers models, hashing, YARA, ClamAV and VirusTotal boundaries, the detection engine, directory progress, history persistence, statistics, CLI output, reports, and API validation.
+Tests use disposable databases and offscreen Qt. CI is configured for Windows/Linux and Python 3.12/3.13; see the review guide for what was actually run in the review environment. Screenshots show the real widgets with illustrative fixture data, not performance measurements.
 
-## Project structure
+## Structure
 
 ```text
 antivirus/
-├── config/          Application paths and environment setup
-├── controller/      Desktop workflow coordination
-├── detection/       Multi-engine detection and YARA rules
-├── model/           Scan and threat data models
-├── repository/      SQLite persistence
-├── services/        Scanner, reports, statistics, and integrations
-├── view/            PySide6 pages, shared components, and visual theme
-├── api.py           Flask REST API
-└── frontend_main.py Desktop entry point
-
-tests/               Automated regression suite
-main.py              CLI entry point
+  config/       Paths, environment loading and resource limits
+  controller/   Desktop workflow and scan-history coordination
+  detection/    Multi-engine classification and educational YARA rules
+  model/        Results, reports, statuses and threat metadata
+  repository/   SQLite history and local hash catalogue
+  services/     Scanning, engine adapters, reports, signatures and monitoring
+  view/         PySide6 pages, radar, navigation and theme
+  api.py        Restricted Flask API
+  frontend_main.py
+scripts/        Harmless hash-demo seeding
+demo_samples/   Harmless classroom samples
+tests/          Unit, security regression and Qt workflow tests
+docs/           Audit, IAS mapping and preview screenshots
+main.py         CLI
 ```
-
-Application-generated databases are stored under `antivirus_data/`, which is intentionally excluded from Git.

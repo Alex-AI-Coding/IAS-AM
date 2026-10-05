@@ -21,8 +21,7 @@ class ThreatRepository:
     def _initialize(self) -> None:
         connection = sqlite3.connect(self.db_path)
         try:
-            connection.execute(
-                """
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS threats (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     sha256 TEXT NOT NULL UNIQUE,
@@ -31,8 +30,7 @@ class ThreatRepository:
                     severity TEXT NOT NULL,
                     description TEXT DEFAULT ''
                 )
-                """
-            )
+                """)
             connection.commit()
         finally:
             connection.close()
@@ -82,3 +80,7 @@ class ThreatRepository:
             "severity": row[3],
             "description": row[4],
         }
+
+    def count(self) -> int:
+        with sqlite3.connect(self.db_path) as connection:
+            return int(connection.execute("SELECT COUNT(*) FROM threats").fetchone()[0])

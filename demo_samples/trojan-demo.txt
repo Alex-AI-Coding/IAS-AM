@@ -1,0 +1,2 @@
+Harmless classroom demonstration. No executable code.
+EDU_TROJAN_PAYLOAD backdoor_loader persistence_beacon remote_payload

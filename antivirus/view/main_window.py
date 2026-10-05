@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -25,6 +26,13 @@ from antivirus.view.history_view import HistoryView
 from antivirus.view.results_view import ResultsView
 from antivirus.view.scan_view import ScanView
 from antivirus.view.settings_view import SettingsView
+from antivirus.view.network_tab import NetworkMonitorTab
+from antivirus.services.download_watcher import DownloadWatcherService
+from antivirus.services.scanner import Scanner
+from antivirus.detection.detection_engine import DetectionEngine
+from antivirus.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class TopNavigation(QWidget):
@@ -70,14 +78,21 @@ class TopNavigation(QWidget):
 class MainWindow(QMainWindow):
     """Application shell with a desktop-style top navigation bar."""
 
-    PAGE_NAMES = ("Dashboard", "Scan", "Results", "History", "Settings")
+    PAGE_NAMES = ("Dashboard", "Scan", "Results", "History", "Network", "Settings")
+    DASHBOARD, SCAN, RESULTS, HISTORY, NETWORK, SETTINGS = range(6)
+    download_ready = Signal(object)
+    monitor_failed = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Premiere Security — Educational Antivirus")
         self.setMinimumSize(960, 640)
         self.resize(1180, 760)
-        self._close_confirmed = False
+        self.download_watcher = None
+        self._closing = False
+        self._close_timer = QTimer(self)
+        self._close_timer.setInterval(100)
+        self._close_timer.timeout.connect(self._finish_closing)
 
         self.scan_controller = ScanController()
         self.history_controller = HistoryController(self.scan_controller.repository)
@@ -85,6 +100,8 @@ class MainWindow(QMainWindow):
             scan_repo=self.scan_controller.repository
         )
         self._build_ui()
+        self.download_ready.connect(self._download_result)
+        self.monitor_failed.connect(self._monitor_failed)
         self._apply_saved_settings()
         self._refresh_dashboard()
 
@@ -134,14 +151,20 @@ class MainWindow(QMainWindow):
         self.results_view = ResultsView(self.pages)
         self.history_view = HistoryView(self.history_controller, self.pages)
         self.settings_view = SettingsView(self.pages)
+        self.network_tab = NetworkMonitorTab(self.pages)
         for page in (
             self.dashboard_view,
             self.scan_view,
             self.results_view,
             self.history_view,
+            self.network_tab,
             self.settings_view,
         ):
-            self.pages.addWidget(page)
+            scroll = QScrollArea(self.pages)
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+            scroll.setWidget(page)
+            self.pages.addWidget(scroll)
 
         layout.addWidget(top_bar)
         layout.addWidget(self.pages, 1)
@@ -151,9 +174,13 @@ class MainWindow(QMainWindow):
         self.navigation.setCurrentIndex(0)
         self.pages.setCurrentIndex(0)
         self.scan_view.scan_completed.connect(self._show_scan_result)
+        self.scan_view.scan_started.connect(
+            lambda: self.settings_view.setEnabled(False)
+        )
+        self.scan_view.scan_idle.connect(lambda: self.settings_view.setEnabled(True))
         self.dashboard_view.start_scan.connect(self._quick_scan_from_dashboard)
         self.dashboard_view.open_history.connect(
-            lambda: self.navigation.setCurrentIndex(3)
+            lambda: self.navigation.setCurrentIndex(self.HISTORY)
         )
         self.settings_view.setting_changed.connect(self._setting_changed)
         self.history_view.history_changed.connect(self._refresh_dashboard)
@@ -161,8 +188,8 @@ class MainWindow(QMainWindow):
     def _navigate(self, row):
         current_row = self.pages.currentIndex()
         if (
-            current_row == 4
-            and row != 4
+            current_row == self.SETTINGS
+            and row != self.SETTINGS
             and self.settings_view.has_unsaved_changes()
             and not self.settings_view.resolve_unsaved_changes()
         ):
@@ -180,11 +207,11 @@ class MainWindow(QMainWindow):
         self.settings_view.update_availability(states)
 
     def _page_changed(self, row):
-        if row == 3:
+        if row == self.HISTORY:
             self.history_view.refresh()
-        elif row == 0:
+        elif row == self.DASHBOARD:
             self._refresh_dashboard()
-        elif row == 4:
+        elif row == self.SETTINGS:
             states = self.scan_controller.scanner.detection_engine.get_engine_states()
             self.settings_view.update_availability(states)
 
@@ -197,21 +224,102 @@ class MainWindow(QMainWindow):
         }.get(key)
         if attribute:
             setattr(self.scan_controller.scanner.detection_engine, attribute, enabled)
+        elif key == "reduced_motion":
+            self.scan_view.radar.set_reduced_motion(enabled)
+        elif key == "download_monitor_enabled":
+            self._set_download_monitor(enabled)
+        if attribute and self.download_watcher and self.download_watcher.is_running:
+            # The running watcher uses its own engine snapshot. Restart after it finishes.
+            self.download_watcher.stop()
+            self.settings_view.set_saved_value("download_monitor_enabled", False)
+            self.statusBar().showMessage(
+                "Download monitoring is stopping. Turn it off and on to apply the new engine settings."
+            )
         if self.pages.currentIndex() == 0:
             self._refresh_dashboard()
 
     def _quick_scan_from_dashboard(self):
-        self.navigation.setCurrentIndex(1)
+        self.navigation.setCurrentIndex(self.SCAN)
         QTimer.singleShot(100, self.scan_view.start_quick_scan)
 
     def _show_scan_result(self, result):
+        if self._closing:
+            return
         if hasattr(result, "results"):
             report = result
         else:
             report = ScanReport()
             report.add_result(result)
         self.results_view.show_report(report)
-        self.navigation.setCurrentIndex(2)
+        if (
+            self.pages.currentIndex() == self.SETTINGS
+            and self.settings_view.has_unsaved_changes()
+        ):
+            self.statusBar().showMessage(
+                "Your scan results are ready. Save or discard settings, then open Results."
+            )
+        else:
+            self.navigation.setCurrentIndex(self.RESULTS)
+        self._refresh_dashboard()
+
+    def _set_download_monitor(self, enabled):
+        if not enabled:
+            if self.download_watcher:
+                self.download_watcher.stop()
+            return
+        try:
+            engine = self.scan_controller.scanner.detection_engine
+            watch_engine = DetectionEngine(
+                hash_enabled=engine.hash_enabled,
+                yara_enabled=engine.yara_enabled,
+                clamav_enabled=engine.clamav_enabled,
+                virustotal_enabled=engine.virustotal_enabled,
+            )
+            watch_controller = ScanController(
+                Scanner(watch_engine), self.scan_controller.repository
+            )
+
+            def check_download(path):
+                self.download_ready.emit(watch_controller.scan_file(path))
+
+            if self.download_watcher and self.download_watcher.has_pending_work():
+                raise RuntimeError(
+                    "Download monitoring is still stopping. Try enabling it again shortly."
+                )
+            self.download_watcher = DownloadWatcherService(
+                scanner_callback=check_download,
+                error_callback=self.monitor_failed.emit,
+            )
+            self.download_watcher.start()
+            self.statusBar().showMessage(
+                "Download monitoring is on. Stable new files are checked; alerts do not block opening files."
+            )
+        except Exception as exc:
+            self._monitor_failed(str(exc))
+
+    def _monitor_failed(self, message):
+        if self.download_watcher:
+            self.download_watcher.stop()
+        self.settings_view.set_saved_value("download_monitor_enabled", False)
+        self.statusBar().showMessage(f"Download monitoring is off: {message}")
+
+    def _download_result(self, result):
+        if self._closing:
+            return
+        # Do not replace a manual scan's Results page with unsolicited background data.
+        label = (
+            "Suspicious download"
+            if result.is_detected
+            else (
+                "No matches in download"
+                if result.is_clean
+                else "Download check incomplete"
+            )
+        )
+        self.statusBar().showMessage(
+            f"{label}: {result.file_path}. See History for the saved summary."
+        )
+        self._refresh_dashboard()
 
     def _refresh_dashboard(self):
         try:
@@ -223,15 +331,31 @@ class MainWindow(QMainWindow):
             self.dashboard_view.update_dashboard(
                 statistics, recent_scans, engine_states
             )
-        except (OSError, ValueError):
+        except Exception:
+            logger.exception("Dashboard could not load persisted statistics")
             self.dashboard_view.protection_title.setText("Scanner needs attention")
             self.dashboard_view.protection_detail.setText(
                 "Protection details could not be loaded. Try reopening the application."
             )
 
+    def _background_busy(self):
+        return (
+            self.scan_view.is_scanning()
+            or self.network_tab.is_busy()
+            or bool(self.download_watcher and self.download_watcher.has_pending_work())
+        )
+
+    def _finish_closing(self):
+        if not self._background_busy():
+            self._close_timer.stop()
+            self.close()
+
     def closeEvent(self, event):
-        if self._close_confirmed:
-            event.accept()
+        if self._closing:
+            if self._background_busy():
+                event.ignore()
+            else:
+                event.accept()
             return
 
         if self.settings_view.has_unsaved_changes():
@@ -250,20 +374,15 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
-            self._close_confirmed = True
+        self._closing = True
+        if self.download_watcher:
+            self.download_watcher.stop()
+        if self.scan_view.is_scanning():
             self.scan_view.cancel_active_scan(confirm=False)
-            self.scan_view.scan_idle.connect(self.close)
+        if self._background_busy():
+            self.setEnabled(False)
+            self.statusBar().showMessage("Finishing current checks before closing…")
+            self._close_timer.start()
             event.ignore()
-            return
-
-        answer = QMessageBox.question(
-            self,
-            "Close Premiere Security?",
-            "Do you wish to close the application?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if answer == QMessageBox.StandardButton.Yes:
-            event.accept()
         else:
-            event.ignore()
+            event.accept()

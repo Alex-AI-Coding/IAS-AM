@@ -5,12 +5,13 @@ rule WormSignature_NetworkReplication
         category = "Worm"
         severity = "high"
     strings:
+        $demo = "EDU_WORM_PAYLOAD"
         $replication1 = "CreateRemoteThread" nocase
         $replication2 = "WMI_PROCESS_CREATE" nocase
         $replication3 = "IpSendArp" nocase
         $network = "bind" nocase
     condition:
-        any of ($replication*) and $network
+        $demo and (any of ($replication*) and $network)
 }
 
 rule WormSignature_FileReplication
@@ -20,11 +21,12 @@ rule WormSignature_FileReplication
         category = "Worm"
         severity = "high"
     strings:
+        $demo = "EDU_WORM_PAYLOAD"
         $copy1 = "CopyFileA" nocase
         $copy2 = "CopyFileW" nocase
         $system_dir = "System32" nocase
     condition:
-        any of ($copy*) and $system_dir
+        $demo and (any of ($copy*) and $system_dir)
 }
 
 rule WormSignature_MassEmailer
@@ -34,10 +36,11 @@ rule WormSignature_MassEmailer
         category = "Worm"
         severity = "medium"
     strings:
+        $demo = "EDU_WORM_PAYLOAD"
         $smtp = "SMTP" nocase
         $mail = "SendMailA" nocase
         $outlook = "Outlook" nocase
         $address_book = "AddressBook" nocase
     condition:
-        $smtp and 1 of ($mail, $outlook, $address_book)
+        $demo and ($smtp and 1 of ($mail, $outlook, $address_book))
 }

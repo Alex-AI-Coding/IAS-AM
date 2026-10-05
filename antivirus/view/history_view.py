@@ -73,7 +73,17 @@ class HistoryView(QWidget):
 
     def refresh(self):
         self.table.setRowCount(0)
-        records = self.controller.recent_scans() if self.controller else []
+        try:
+            records = self.controller.recent_scans() if self.controller else []
+        except Exception:
+            self.empty_state.set_message(
+                "History is unavailable",
+                "Check access to the application data folder and try again.",
+            )
+            self.table.hide()
+            self.empty_state.show()
+            self.clear_button.setEnabled(False)
+            return
         for record in records:
             row = self.table.rowCount()
             self.table.insertRow(row)
@@ -101,6 +111,11 @@ class HistoryView(QWidget):
                     item.setForeground(QColor(color))
                 self.table.setItem(row, column, item)
         has_records = bool(records)
+        if not has_records:
+            self.empty_state.set_message(
+                "No scan history yet",
+                "Completed scans will be saved here automatically.",
+            )
         self.table.setVisible(has_records)
         self.empty_state.setVisible(not has_records)
         self.clear_button.setEnabled(has_records)
@@ -117,6 +132,14 @@ class HistoryView(QWidget):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
-        self.controller.clear_history()
+        try:
+            self.controller.clear_history()
+        except Exception:
+            QMessageBox.warning(
+                self,
+                "History could not be cleared",
+                "Check access to the application data folder and try again.",
+            )
+            return
         self.refresh()
         self.history_changed.emit()

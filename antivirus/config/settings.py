@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -39,3 +38,16 @@ BASE_DIR = Path(
 RULE_DIR = Path(__file__).resolve().parents[1] / "detection" / "rules"
 THREAT_DB_PATH = BASE_DIR / "threats.db"
 SCAN_DB_PATH = BASE_DIR / "scan_history.db"
+
+
+def positive_int(name: str, default: int) -> int:
+    """Reject invalid resource limits early rather than silently disabling them."""
+    value = int(os.getenv(name, str(default)))
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+MAX_FILE_BYTES = positive_int("ANTIVIRUS_MAX_FILE_BYTES", 256 * 1024 * 1024)
+MAX_SCAN_FILES = positive_int("ANTIVIRUS_MAX_SCAN_FILES", 25000)
+YARA_TIMEOUT_SECONDS = positive_int("ANTIVIRUS_YARA_TIMEOUT", 10)

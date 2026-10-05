@@ -42,7 +42,7 @@ def test_virustotal_service_parses_positive_result():
         }
     }
     service = VirusTotalService(api_key="demo-key", http_client=FakeClient(response))
-    result = service.lookup_hash("deadbeef")
+    result = service.lookup_hash("a" * 64)
 
     assert result["status"] == "detected"
     assert result["malicious_count"] == 5

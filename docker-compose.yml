@@ -2,11 +2,14 @@ services:
   antivirus-api:
     build: .
     ports:
-      - "5000:5000"
-    volumes:
-      - antivirus-data:/app/antivirus_data
+      - "127.0.0.1:5000:5000"
     environment:
       VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
+      ANTIVIRUS_API_TOKEN: ${ANTIVIRUS_API_TOKEN:-}
+      ANTIVIRUS_API_SCAN_ROOT: /app/scan_targets
+    volumes:
+      - antivirus-data:/app/antivirus_data
+      - ./demo_samples:/app/scan_targets:ro
     restart: unless-stopped
 
   antivirus-tests:

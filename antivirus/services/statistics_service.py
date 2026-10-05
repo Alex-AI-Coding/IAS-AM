@@ -15,7 +15,7 @@ class StatisticsService:
     def get_scan_statistics(self, hours: int | None = 24) -> Dict:
         """Get scan statistics for the last N hours."""
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours or 0)
-        recent_scans = self.scan_repo.get_recent_scans(limit=1000)
+        recent_scans = self.scan_repo.get_recent_scans(limit=None)
 
         filtered_scans = []
         threat_scans = 0
@@ -64,7 +64,7 @@ class StatisticsService:
 
     def get_threat_distribution(self) -> Dict[str, int]:
         """Get distribution of threats by category."""
-        recent_scans = self.scan_repo.get_recent_scans(limit=1000)
+        recent_scans = self.scan_repo.get_recent_scans(limit=None)
         distribution: Dict[str, int] = {}
 
         for scan in recent_scans:
@@ -91,7 +91,7 @@ class StatisticsService:
 
     def get_top_threats(self, limit: int = 10) -> List[Dict]:
         """Get most frequently detected threats."""
-        recent_scans = self.scan_repo.get_recent_scans(limit=1000)
+        recent_scans = self.scan_repo.get_recent_scans(limit=None)
         threat_counts: Dict[str, int] = {}
 
         for scan in recent_scans:
@@ -115,11 +115,9 @@ class StatisticsService:
             {"name": name, "count": count} for name, count in sorted_threats[:limit]
         ]
 
-    def get_false_positive_ratio(self) -> float:
-        """Estimate false positive ratio (requires manual tagging in production)."""
-        # This is a placeholder for production use
-        # In a real system, users would mark false positives
-        return 0.0
+    def get_false_positive_ratio(self) -> float | None:
+        """Unknown until labelled evaluation samples have been collected."""
+        return None
 
     def get_detection_summary(self, report: ScanReport) -> Dict:
         """Summarize detection results from a scan report."""

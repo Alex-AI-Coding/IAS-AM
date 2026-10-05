@@ -1,0 +1,2 @@
+Harmless classroom demonstration. No executable code.
+EDU_WORM_PAYLOAD CreateRemoteThread bind

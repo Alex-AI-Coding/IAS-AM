@@ -3,9 +3,10 @@ rule EducationalTrojan {
         description = "Educational Trojan heuristic signature"
         category = "Trojan"
     strings:
+        $demo = "EDU_TROJAN_PAYLOAD"
         $a = "backdoor_loader"
         $b = "persistence_beacon"
         $c = "remote_payload"
     condition:
-        2 of ($a, $b, $c)
+        $demo and (2 of ($a, $b, $c))
 }

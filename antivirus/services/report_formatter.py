@@ -1,30 +1,51 @@
-import json
+"""Consistent report exports with spreadsheet-formula escaping."""
+
 import csv
+import json
 from io import StringIO
-from typing import Any, Dict
 
 from antivirus.model.scan_report import ScanReport
 
 
-class ReportFormatter:
-    """Export scan results in various formats."""
+def csv_cell(value):
+    text = "" if value is None else str(value)
+    # Spreadsheet programs can execute formulas even in quoted CSV fields.
+    if text.lstrip().startswith(("=", "+", "-", "@")) or text.startswith(
+        ("\t", "\r", "\n")
+    ):
+        return "'" + text
+    return text
 
+
+class ReportFormatter:
     @staticmethod
-    def to_json(report: ScanReport) -> str:
-        """Export scan report as JSON."""
-        data = {
+    def to_dict(report: ScanReport) -> dict:
+        return {
+            "schema_version": 2,
             "summary": {
                 "total_files": report.total_files,
                 "clean_files": report.clean_files,
                 "threat_files": report.threat_files,
                 "error_files": report.error_files,
+                "skipped_files": report.skipped_files,
+                "incomplete_files": report.incomplete_files,
+                "outcome": report.outcome,
+                "cancelled": report.cancelled,
+                "duration_seconds": report.duration,
+                "started_at": report.started_at,
+                "completed_at": report.completed_at,
+                "warnings": report.warnings,
             },
             "results": [
                 {
                     "file_path": result.file_path,
                     "status": result.status.value,
                     "sha256": result.sha256,
+                    "scan_duration_seconds": result.scan_duration,
+                    "started_at": result.started_at,
+                    "completed_at": result.completed_at,
                     "detection_methods": result.detection_methods,
+                    "engine_results": result.engine_results,
                     "threats": [
                         {
                             "name": threat.name,
@@ -36,18 +57,20 @@ class ReportFormatter:
                         for threat in result.threats
                     ],
                     "error_message": result.error_message,
+                    "warnings": result.warnings,
                 }
                 for result in report.results
             ],
         }
-        return json.dumps(data, indent=2)
+
+    @staticmethod
+    def to_json(report: ScanReport) -> str:
+        return json.dumps(ReportFormatter.to_dict(report), indent=2)
 
     @staticmethod
     def to_csv(report: ScanReport) -> str:
-        """Export scan report as CSV."""
-        output = StringIO()
+        output = StringIO(newline="")
         writer = csv.writer(output)
-
         writer.writerow(
             [
                 "File Path",
@@ -59,70 +82,51 @@ class ReportFormatter:
                 "Source",
                 "Detection Methods",
                 "Error Message",
+                "Engine Results",
+                "Scan Outcome",
             ]
         )
-
         for result in report.results:
-            if result.threats:
-                for threat in result.threats:
-                    writer.writerow(
-                        [
+            for threat in result.threats or [None]:
+                writer.writerow(
+                    [
+                        csv_cell(value)
+                        for value in [
                             result.file_path,
                             result.status.value,
                             result.sha256,
-                            threat.name,
-                            threat.category,
-                            threat.severity,
-                            threat.source,
+                            threat.name if threat else "",
+                            threat.category if threat else "",
+                            threat.severity if threat else "",
+                            threat.source if threat else "",
                             ";".join(result.detection_methods),
-                            result.error_message or "",
+                            result.error_message,
+                            ";".join(
+                                f"{key}:{value}"
+                                for key, value in result.engine_results.items()
+                            ),
+                            report.outcome,
                         ]
-                    )
-            else:
-                writer.writerow(
-                    [
-                        result.file_path,
-                        result.status.value,
-                        result.sha256,
-                        "",
-                        "",
-                        "",
-                        "",
-                        ";".join(result.detection_methods),
-                        result.error_message or "",
                     ]
                 )
-
+        # Keep incomplete/empty scan context even when there are no result rows.
+        if report.warnings or report.cancelled or not report.results:
+            writer.writerow(
+                [
+                    csv_cell(value)
+                    for value in [
+                        "",
+                        "summary",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "; ".join(report.warnings),
+                        "",
+                        report.outcome,
+                    ]
+                ]
+            )
         return output.getvalue()
-
-    @staticmethod
-    def to_dict(report: ScanReport) -> Dict[str, Any]:
-        """Export scan report as dictionary."""
-        return {
-            "summary": {
-                "total_files": report.total_files,
-                "clean_files": report.clean_files,
-                "threat_files": report.threat_files,
-                "error_files": report.error_files,
-            },
-            "results": [
-                {
-                    "file_path": result.file_path,
-                    "status": result.status.value,
-                    "sha256": result.sha256,
-                    "detection_methods": result.detection_methods,
-                    "threats": [
-                        {
-                            "name": threat.name,
-                            "category": threat.category,
-                            "severity": threat.severity,
-                            "description": threat.description,
-                            "source": threat.source,
-                        }
-                        for threat in result.threats
-                    ],
-                    "error_message": result.error_message,
-                }
-                for result in report.results
-            ],
-        }

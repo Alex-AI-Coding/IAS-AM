@@ -5,12 +5,13 @@ rule SpywareSignature_KeyLogger
         category = "Spyware"
         severity = "high"
     strings:
+        $demo = "EDU_SPYWARE_PAYLOAD"
         $hook1 = "SetWindowsHookExA" nocase
         $hook2 = "SetWindowsHookExW" nocase
         $getkey = "GetKeyState" nocase
         $keydown = "WM_KEYDOWN" nocase
     condition:
-        2 of ($hook*, $getkey, $keydown)
+        $demo and (2 of ($hook*, $getkey, $keydown))
 }
 
 rule SpywareSignature_ScreenCapture
@@ -20,12 +21,13 @@ rule SpywareSignature_ScreenCapture
         category = "Spyware"
         severity = "high"
     strings:
+        $demo = "EDU_SPYWARE_PAYLOAD"
         $getdc = "GetDC" nocase
         $bitblt = "BitBlt" nocase
         $screenshot = "Screenshot" nocase
         $screen_capture = "ScreenCapture" nocase
     condition:
-        2 of them
+        $demo and (2 of ($getdc, $bitblt, $screenshot, $screen_capture))
 }
 
 rule SpywareSignature_DataThief
@@ -35,12 +37,13 @@ rule SpywareSignature_DataThief
         category = "Spyware"
         severity = "high"
     strings:
+        $demo = "EDU_SPYWARE_PAYLOAD"
         $browser_theft = "Cookie" nocase
         $password_theft = "Password" nocase
         $clipboard = "Clipboard" nocase
         $email_theft = "Email" nocase
     condition:
-        3 of them and filesize < 5MB
+        $demo and (3 of ($browser_theft, $password_theft, $clipboard, $email_theft) and filesize < 5MB)
 }
 
 rule SpywareSignature_RemoteAccess
@@ -50,9 +53,10 @@ rule SpywareSignature_RemoteAccess
         category = "Spyware"
         severity = "high"
     strings:
+        $demo = "EDU_SPYWARE_PAYLOAD"
         $listening = "bind" nocase
         $cmd_shell = "cmd.exe" nocase
         $remote = "Remote" nocase
     condition:
-        $listening and $cmd_shell and $remote
+        $demo and ($listening and $cmd_shell and $remote)
 }

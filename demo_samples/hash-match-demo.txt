@@ -1,0 +1,2 @@
+This is a harmless exact-hash classroom sample.
+Run python scripts/prepare_demo.py to add its hash to the educational catalogue.

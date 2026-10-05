@@ -6,3 +6,7 @@ __pycache__
 antivirus_data
 venv
 .venv
+.env
+.env.*
+docs/screenshots
+IAS-AM-main

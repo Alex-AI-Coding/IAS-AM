@@ -34,8 +34,7 @@ def test_get_top_threats(statistics_service):
 
 def test_get_false_positive_ratio(statistics_service):
     ratio = statistics_service.get_false_positive_ratio()
-    assert isinstance(ratio, float)
-    assert 0.0 <= ratio <= 1.0
+    assert ratio is None
 
 
 def test_get_detection_summary(statistics_service):

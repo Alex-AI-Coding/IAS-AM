@@ -7,5 +7,5 @@ rule EducationalRansomware {
         $b = "encrypt_all_files"
         $c = "ransom_note"
     condition:
-        2 of ($a, $b, $c)
+        $a and 1 of ($b, $c)
 }

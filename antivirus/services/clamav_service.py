@@ -21,9 +21,7 @@ class ClamAVService:
         try:
             import pyclamd
 
-            client = pyclamd.ClamdNetworkSocket(
-                host="127.0.0.1", port=3310, timeout=0.25
-            )
+            client = pyclamd.ClamdNetworkSocket(host="127.0.0.1", port=3310, timeout=5)
             client.ping()
             return client
         except Exception:
@@ -68,6 +66,18 @@ class ClamAVService:
                 "threats": [],
             }
 
+        daemon_errors = [
+            str(value[1]) if len(value) > 1 else "Daemon error"
+            for value in raw.values()
+            if isinstance(value, tuple) and value and value[0] == "ERROR"
+        ]
+        if daemon_errors or raw.get("Error"):
+            return {
+                "status": "error",
+                "message": "; ".join(daemon_errors) or str(raw["Error"]),
+                "threats": [],
+            }
+
         infected = raw.get("Infected")
         result_text = str(raw.get("Result", "")).upper()
         daemon_matches = [
@@ -99,8 +109,15 @@ class ClamAVService:
                 ],
             }
 
+        if raw.get("Infected") is False and raw.get("Result") == "OK":
+            return {"status": "clean", "message": "OK", "threats": []}
+        if raw and all(
+            isinstance(value, tuple) and value and value[0] == "OK"
+            for value in raw.values()
+        ):
+            return {"status": "clean", "message": "OK", "threats": []}
         return {
-            "status": "clean",
-            "message": raw.get("Result", "OK"),
+            "status": "error",
+            "message": "Unrecognized ClamAV result.",
             "threats": [],
         }

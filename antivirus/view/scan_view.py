@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from threading import Event
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import (
@@ -20,20 +21,26 @@ from PySide6.QtWidgets import (
 from antivirus.model.scan_report import ScanReport
 from antivirus.model.scan_result import ScanResult
 from antivirus.view.components import Card, page_header, section_title
+from antivirus.view.radar import ScanRadar
 
 
 class ScanWorker(QObject):
     finished = Signal(object)
     failed = Signal(str)
     progress = Signal(int, int, str)
-    cancelled = Signal()
+    cancelled = Signal(object)
+    done = Signal()
 
     def __init__(self, operation, path=None, supports_progress=False):
         super().__init__()
         self.operation = operation
         self.path = path
         self.supports_progress = supports_progress
-        self.cancel_requested = False
+        self._cancel_event = Event()
+
+    @property
+    def cancel_requested(self):
+        return self._cancel_event.is_set()
 
     @Slot()
     def run(self):
@@ -52,24 +59,28 @@ class ScanWorker(QObject):
             else:
                 result = self.operation(self.path)
             if self.cancel_requested:
-                self.cancelled.emit()
+                if isinstance(result, ScanReport):
+                    result.cancelled = True
+                self.cancelled.emit(result)
             else:
                 self.finished.emit(result)
         except Exception as exc:
             self.failed.emit(str(exc))
+        finally:
+            self.done.emit()
 
     def _progress(self, current, total, path):
         self.progress.emit(current, total, path)
 
     def cancel(self):
-        self.cancel_requested = True
+        self._cancel_event.set()
 
 
 class ScanChoice(QFrame):
     def __init__(self, symbol, title, description, button_text, parent=None):
         super().__init__(parent)
         self.setObjectName("ScanChoice")
-        self.setFixedHeight(255)
+        self.setFixedHeight(214)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 17)
         layout.setSpacing(8)
@@ -94,6 +105,7 @@ class ScanChoice(QFrame):
 class ScanView(QWidget):
     scan_completed = Signal(object)
     scan_idle = Signal()
+    scan_started = Signal()
 
     def __init__(
         self,
@@ -108,6 +120,7 @@ class ScanView(QWidget):
         self._quick_scan = quick_scan
         self._thread = None
         self._worker = None
+        self._pending_result = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 27, 30, 26)
@@ -174,12 +187,23 @@ class ScanView(QWidget):
         self.status_label.setProperty("role", "muted")
         self.status_label.setWordWrap(True)
         self.progress = QProgressBar(self.progress_card)
+        self.progress.setTextVisible(False)
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.hide()
-        progress_layout.addLayout(progress_header)
-        progress_layout.addWidget(self.status_label)
-        progress_layout.addWidget(self.progress)
+        self.status_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.status_label.setMinimumWidth(200)
+        self.radar = ScanRadar(self.progress_card)
+        radar_row = QHBoxLayout()
+        radar_row.setSpacing(22)
+        radar_row.addWidget(self.radar)
+        progress_text = QVBoxLayout()
+        progress_text.setSpacing(10)
+        progress_text.addLayout(progress_header)
+        progress_text.addWidget(self.status_label)
+        progress_text.addWidget(self.progress)
+        radar_row.addLayout(progress_text, 1)
+        progress_layout.addLayout(radar_row)
         layout.addWidget(self.progress_card)
         layout.addStretch(1)
 
@@ -232,11 +256,14 @@ class ScanView(QWidget):
             return
         self._thread = QThread(self)
         self._worker = ScanWorker(operation, path, supports_progress)
+        self._pending_result = None
         self._set_scan_controls_enabled(False)
         self.progress_title.setText(f"{title} in progress")
         self.progress.show()
         self.cancel_button.setVisible(supports_progress)
         self.progress.setRange(0, 0)
+        self.radar.set_state("scanning")
+        self.scan_started.emit()
         self.status_label.setText(f"Preparing to scan {path or 'common folders'}…")
         self._worker.progress.connect(self._scan_progress)
         self._worker.moveToThread(self._thread)
@@ -244,33 +271,43 @@ class ScanView(QWidget):
         self._worker.finished.connect(self._scan_finished)
         self._worker.cancelled.connect(self._scan_cancelled)
         self._worker.failed.connect(self._scan_failed)
-        self._worker.finished.connect(self._worker.deleteLater)
-        self._worker.failed.connect(self._worker.deleteLater)
-        self._worker.cancelled.connect(self._worker.deleteLater)
-        self._worker.finished.connect(self._thread.quit)
-        self._worker.failed.connect(self._thread.quit)
-        self._worker.cancelled.connect(self._thread.quit)
+        self._worker.done.connect(self._thread.quit)
+        self._worker.done.connect(self._worker.deleteLater)
         self._thread.finished.connect(self._scan_thread_finished)
         self._thread.start()
 
     def _scan_finished(self, result):
+        self._pending_result = result
+        self.radar.set_state(
+            "error"
+            if (
+                getattr(result, "error_files", 0)
+                or getattr(result, "skipped_files", 0)
+                or getattr(result, "error_message", None)
+            )
+            else "complete"
+        )
         self.progress.setRange(0, 1)
         self.progress.setValue(1)
         if isinstance(result, ScanResult):
             threats = len(result.threats)
             self.status_label.setText(
-                f"Scan complete. {1 if result.is_clean else 0} clean file and {threats} threat"
-                f"{'s' if threats != 1 else ''} found."
+                f"Result: {result.status.value}. {threats} detection(s). "
+                + (
+                    result.error_message
+                    or "No matches means no known pattern was found; it does not prove safety."
+                )
             )
         else:
             self.status_label.setText(
                 f"Scan complete. {result.total_files} files checked, "
-                f"{result.threat_files} suspicious, and {result.error_files} errors."
+                f"{result.threat_files} suspicious, {result.error_files} errors, "
+                f"and {result.skipped_files} skipped. " + " ".join(result.warnings)
             )
         self.progress_title.setText("Scan complete")
-        self.scan_completed.emit(result)
 
     def _scan_failed(self, message):
+        self.radar.set_state("error")
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
         self.progress_title.setText("Scan could not finish")
@@ -278,19 +315,24 @@ class ScanView(QWidget):
             f"Premiere Security could not complete this scan: {message}"
         )
 
-    def _scan_cancelled(self):
+    def _scan_cancelled(self, result):
+        self._pending_result = result
+        self.radar.set_state("cancelled")
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
         self.progress_title.setText("Scan cancelled")
-        self.status_label.setText("The scan stopped safely. No files were changed.")
+        self.status_label.setText(
+            "The scan stopped safely. Partial results are available in Results."
+        )
 
     def _scan_progress(self, current, total, path):
         self.progress.setRange(0, max(total, 1))
         self.progress.setValue(current)
-        self.status_label.setText(f"Checking {current} of {total}: {path}")
+        self.status_label.setText(f"Checking {current} of {total}: {path[-220:]}")
+        self.status_label.setToolTip(path)
 
     def _cancel_scan(self, confirm: bool = True):
-        if self._worker:
+        if self._worker and self._thread and self._thread.isRunning():
             if confirm:
                 answer = QMessageBox.question(
                     self,
@@ -301,7 +343,10 @@ class ScanView(QWidget):
                 )
                 if answer != QMessageBox.StandardButton.Yes:
                     return
-            self._worker.cancel()
+            try:
+                self._worker.cancel()
+            except RuntimeError:
+                return
             self.cancel_button.setEnabled(False)
             self.status_label.setText("Stopping safely after the current file…")
 
@@ -312,6 +357,9 @@ class ScanView(QWidget):
         self._thread.deleteLater()
         self._worker = None
         self._thread = None
+        if self._pending_result is not None:
+            self.scan_completed.emit(self._pending_result)
+            self._pending_result = None
         self.scan_idle.emit()
 
     def _set_scan_controls_enabled(self, enabled: bool) -> None:

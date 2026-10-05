@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import stat
+import sqlite3
+from time import monotonic
+from datetime import datetime, timezone
 
 from antivirus.model.scan_result import ScanResult
 from antivirus.model.scan_status import ScanStatus
@@ -10,7 +14,12 @@ from antivirus.services.hash_service import HashService
 from antivirus.services.yara_service import YaraService
 from antivirus.services.virustotal_service import VirusTotalService
 from antivirus.repository.threat_repository import ThreatRepository
-from antivirus.config.settings import RULE_DIR, THREAT_DB_PATH, load_environment
+from antivirus.config.settings import (
+    RULE_DIR,
+    THREAT_DB_PATH,
+    MAX_FILE_BYTES,
+    load_environment,
+)
 
 
 class DetectionEngine:
@@ -25,8 +34,9 @@ class DetectionEngine:
         threat_repository: ThreatRepository | None = None,
         hash_enabled: bool = True,
         yara_enabled: bool = True,
-        clamav_enabled: bool = True,
+        clamav_enabled: bool | None = None,
         virustotal_enabled: bool = False,
+        max_file_bytes: int = MAX_FILE_BYTES,
     ):
         load_environment()
         self.hash_service = hash_service or HashService()
@@ -38,19 +48,58 @@ class DetectionEngine:
         )
         self.hash_enabled = hash_enabled
         self.yara_enabled = yara_enabled
-        self.clamav_enabled = clamav_enabled
+        self.clamav_enabled = (
+            getattr(self.clamav_service, "client", None) is not None
+            if clamav_enabled is None
+            else clamav_enabled
+        )
         self.virustotal_enabled = virustotal_enabled
+        if max_file_bytes <= 0:
+            raise ValueError("max_file_bytes must be positive")
+        self.max_file_bytes = max_file_bytes
 
     def analyze_file(self, file_path: str) -> ScanResult:
+        started = monotonic()
+        started_at = datetime.now(timezone.utc).isoformat()
+        result = self._analyze_file(file_path)
+        result.scan_duration = monotonic() - started
+        result.started_at = started_at
+        result.completed_at = datetime.now(timezone.utc).isoformat()
+        return result
+
+    def _analyze_file(self, file_path: str) -> ScanResult:
         candidate = Path(file_path)
-        if not candidate.exists():
+        try:
+            original_stat = candidate.lstat()
+        except FileNotFoundError:
+            return ScanResult(
+                file_path,
+                ScanStatus.ERROR,
+                error_message=f"File not found: {file_path}",
+            )
+        except (OSError, ValueError) as exc:
             return ScanResult(
                 file_path=file_path,
                 status=ScanStatus.ERROR,
-                error_message=f"File not found: {file_path}",
+                error_message=f"File cannot be accessed: {exc}",
+            )
+        if not stat.S_ISREG(original_stat.st_mode):
+            return ScanResult(
+                file_path=file_path,
+                status=ScanStatus.SKIPPED,
+                error_message="Only regular files are scanned; links and special files are skipped.",
+            )
+        if original_stat.st_size > self.max_file_bytes:
+            return ScanResult(
+                file_path=file_path,
+                status=ScanStatus.SKIPPED,
+                error_message=f"File exceeds the {self.max_file_bytes // (1024 * 1024)} MiB scan limit.",
             )
 
         result = ScanResult(file_path=file_path, status=ScanStatus.CLEAN)
+        result.engine_results = {
+            name: "disabled" for name in ("hash", "yara", "clamav", "virustotal")
+        }
         try:
             result.sha256 = self.hash_service.calculate_sha256(str(candidate))
         except Exception as exc:  # pragma: no cover - defensive boundary
@@ -64,8 +113,11 @@ class DetectionEngine:
                 if self.hash_enabled
                 else None
             )
+            if self.hash_enabled:
+                result.engine_results["hash"] = "detected" if existing else "clean"
         except Exception as exc:
             existing = None
+            result.engine_results["hash"] = "error"
             self._add_error(result, f"Hash lookup failed: {exc}")
         if existing:
             result.status = ScanStatus.DETECTED
@@ -87,8 +139,11 @@ class DetectionEngine:
                 if self.yara_enabled
                 else []
             )
+            if self.yara_enabled:
+                result.engine_results["yara"] = "detected" if yara_matches else "clean"
         except Exception as exc:
             yara_matches = []
+            result.engine_results["yara"] = "error"
             self._add_error(result, f"YARA scan failed: {exc}")
         for match in yara_matches:
             rule_name = match["name"]
@@ -116,7 +171,12 @@ class DetectionEngine:
             )
         except Exception as exc:
             clamav_result = {"status": "error", "message": str(exc)}
-        if clamav_result.get("status") == "error":
+        if self.clamav_enabled:
+            result.engine_results["clamav"] = clamav_result.get("status", "error")
+        if self.clamav_enabled and clamav_result.get("status") not in (
+            "clean",
+            "detected",
+        ):
             self._add_error(
                 result,
                 f"ClamAV scan failed: {clamav_result.get('message', 'unknown error')}",
@@ -142,7 +202,8 @@ class DetectionEngine:
                 online_result = self.virustotal_service.lookup_hash(result.sha256)
             except Exception as exc:
                 online_result = {"status": "error", "message": str(exc)}
-            if online_result.get("status") == "error":
+            result.engine_results["virustotal"] = online_result.get("status", "error")
+            if online_result.get("status") not in ("clean", "detected", "unknown"):
                 self._add_error(
                     result,
                     f"VirusTotal lookup failed: {online_result.get('message', 'unknown error')}",
@@ -170,16 +231,54 @@ class DetectionEngine:
                     ),
                 )
 
-        if result.status == ScanStatus.CLEAN and not result.threats:
-            result.status = ScanStatus.CLEAN
+        try:
+            current_stat = candidate.lstat()
+            if (
+                original_stat.st_ino,
+                original_stat.st_dev,
+                original_stat.st_size,
+                original_stat.st_mtime_ns,
+            ) != (
+                current_stat.st_ino,
+                current_stat.st_dev,
+                current_stat.st_size,
+                current_stat.st_mtime_ns,
+            ):
+                self._add_error(
+                    result,
+                    "File changed during scanning; rescan after writing finishes.",
+                )
+        except OSError:
+            self._add_error(result, "File disappeared during scanning.")
+        if result.error_message and not result.is_detected:
+            result.status = ScanStatus.ERROR
+        elif not result.checked_engines and not result.is_detected:
+            result.status = ScanStatus.SKIPPED
+            result.error_message = "No detection engine completed a check. Enable a local engine in Settings."
 
         return result
 
     def get_engine_states(self) -> dict[str, dict[str, object]]:
         """Return user-facing engine state without performing a scan."""
 
+        hash_state: dict[str, object] = {
+            "enabled": self.hash_enabled,
+            "available": True,
+        }
+        try:
+            hash_state["signature_count"] = (
+                self.threat_repository.count()
+                if hasattr(self.threat_repository, "count")
+                else None
+            )
+        except (OSError, sqlite3.Error):
+            hash_state.update(
+                available=False,
+                signature_count=None,
+                error_message="The local hash catalogue cannot be read.",
+            )
         return {
-            "hash": {"enabled": self.hash_enabled, "available": True},
+            "hash": hash_state,
             "yara": {
                 "enabled": self.yara_enabled,
                 "available": getattr(self.yara_service, "_compiler", None) is not None,

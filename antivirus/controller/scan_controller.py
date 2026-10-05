@@ -6,6 +6,10 @@ from antivirus.services.scanner import Scanner
 from antivirus.repository.scan_repository import ScanRepository
 from pathlib import Path
 from time import monotonic
+from datetime import datetime, timezone, timedelta
+from antivirus.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class ScanController:
@@ -38,7 +42,7 @@ class ScanController:
             directory_path,
             "folder",
             monotonic() - started,
-            "cancelled" if cancel_check and cancel_check() else None,
+            "cancelled" if report.cancelled else None,
         )
         return report
 
@@ -48,7 +52,13 @@ class ScanController:
         preferred = [home / name for name in ("Desktop", "Downloads", "Documents")]
         roots = [path for path in preferred if path.is_dir()]
         if not roots:
-            roots = [home]
+            report = ScanReport(
+                warnings=[
+                    "No Desktop, Downloads, or Documents folders were found. Choose a folder manually."
+                ]
+            )
+            self._record_report(report, str(home), "quick", monotonic() - started)
+            return report
         report = self.scanner.scan_directories(
             [str(path) for path in roots], progress_callback, cancel_check
         )
@@ -57,7 +67,7 @@ class ScanController:
             ", ".join(str(path) for path in roots),
             "quick",
             monotonic() - started,
-            "cancelled" if cancel_check and cancel_check() else None,
+            "cancelled" if report.cancelled else None,
         )
         return report
 
@@ -75,12 +85,13 @@ class ScanController:
         duration: float,
         status_override: str | None = None,
     ) -> None:
-        if status_override:
-            status = status_override
-        elif report.total_files and report.error_files == report.total_files:
-            status = "error"
-        else:
-            status = "detected" if report.threat_files else "clean"
+        status = status_override or report.outcome
+        report.duration = duration
+        completed = datetime.now(timezone.utc)
+        report.started_at = (
+            report.started_at or (completed - timedelta(seconds=duration)).isoformat()
+        )
+        report.completed_at = report.completed_at or completed.isoformat()
         threats = [
             {
                 "name": threat.name,
@@ -90,14 +101,26 @@ class ScanController:
             for result in report.results
             for threat in result.threats
         ]
-        self.repository.record_scan(
-            report.total_files,
-            report.threats_found,
-            report.clean_files,
-            report.error_files,
-            status,
-            target=target,
-            scan_type=scan_type,
-            duration=duration,
-            threats=threats,
-        )
+        try:
+            self.repository.record_scan(
+                report.total_files,
+                report.threats_found,
+                report.clean_files,
+                report.error_files,
+                status,
+                started_at=report.started_at,
+                completed_at=report.completed_at,
+                target=target,
+                scan_type=scan_type,
+                duration=duration,
+                threats=threats,
+                skipped_files=report.skipped_files,
+                warnings=report.warnings,
+            )
+        except Exception:
+            logger.exception("Could not persist scan history")
+            report.warnings.append(
+                "Results are available, but history could not be saved. Export this report."
+            )
+            if scan_type == "file" and report.results:
+                report.results[0].warnings.extend(report.warnings)

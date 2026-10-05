@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -20,6 +22,8 @@ from PySide6.QtWidgets import (
 )
 
 from antivirus.services.report_formatter import ReportFormatter
+from antivirus.services.report_signer import ReportSigner
+from antivirus.model.scan_status import ScanStatus
 from antivirus.view.components import (
     EmptyState,
     MetricCard,
@@ -32,6 +36,8 @@ class ResultsView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.report = None
+        self._page_index = 0
+        self._page_size = 250
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 27, 30, 26)
@@ -47,20 +53,27 @@ class ResultsView(QWidget):
         )
         self.export_json_button = QPushButton("Export JSON", self)
         self.export_csv_button = QPushButton("Export CSV", self)
+        self.export_signed_button = QPushButton("Signed JSON", self)
+        self.export_signed_button.setToolTip(
+            "Signs the report with Ed25519. Verify using a separately trusted public key."
+        )
+        self.export_signed_button.clicked.connect(lambda: self._export("signed.json"))
         self.export_json_button.clicked.connect(lambda: self._export("json"))
         self.export_csv_button.clicked.connect(lambda: self._export("csv"))
         self.export_json_button.setEnabled(False)
         self.export_csv_button.setEnabled(False)
+        self.export_signed_button.setEnabled(False)
         heading.addWidget(self.export_json_button)
         heading.addWidget(self.export_csv_button)
+        heading.addWidget(self.export_signed_button)
         layout.addLayout(heading)
 
         metrics = QHBoxLayout()
         metrics.setSpacing(13)
         self.total_card = MetricCard("F", "Files checked")
-        self.clean_card = MetricCard("✓", "Clean files")
+        self.clean_card = MetricCard("✓", "No matches")
         self.threat_card = MetricCard("!", "Suspicious files")
-        self.error_card = MetricCard("E", "Scan errors")
+        self.error_card = MetricCard("E", "Incomplete / skipped")
         for card in (
             self.total_card,
             self.clean_card,
@@ -77,10 +90,22 @@ class ResultsView(QWidget):
         self.summary.setProperty("role", "muted")
         self.filter_combo = QComboBox(self.results_toolbar)
         self.filter_combo.addItems(
-            ["All results", "Threats only", "Clean only", "Errors only"]
+            [
+                "All results",
+                "Threats only",
+                "No matches only",
+                "Errors only",
+                "Skipped only",
+            ]
         )
-        self.filter_combo.currentIndexChanged.connect(self._render_rows)
+        self.filter_combo.currentIndexChanged.connect(self._reset_page)
+        self.search_box = QLineEdit(self.results_toolbar)
+        self.search_box.setPlaceholderText("Find file or detection…")
+        self.search_box.setAccessibleName("Search scan results")
+        self.search_box.setMaximumWidth(230)
+        self.search_box.textChanged.connect(self._reset_page)
         toolbar.addWidget(self.summary, 1)
+        toolbar.addWidget(self.search_box)
         toolbar.addWidget(QLabel("Show:", self.results_toolbar))
         toolbar.addWidget(self.filter_combo)
         layout.addWidget(self.results_toolbar)
@@ -88,13 +113,13 @@ class ResultsView(QWidget):
 
         self.table = QTableWidget(0, 5, self)
         self.table.setHorizontalHeaderLabels(
-            ["File", "Status", "Threat", "Severity", "Detected by"]
+            ["File", "Status", "Threat", "Severity", "Checks completed"]
         )
         configure_table(self.table)
         self.table.horizontalHeader().setStretchLastSection(False)
         self.table.setColumnWidth(0, 285)
-        self.table.setColumnWidth(1, 85)
-        self.table.setColumnWidth(2, 190)
+        self.table.setColumnWidth(1, 110)
+        self.table.setColumnWidth(2, 220)
         self.table.setColumnWidth(3, 85)
         self.table.setColumnWidth(4, 120)
         self.table.horizontalHeader().setStretchLastSection(True)
@@ -110,18 +135,49 @@ class ResultsView(QWidget):
         )
         layout.addWidget(self.empty_state, 1)
 
+        self.pagination = QWidget(self)
+        pagination_layout = QHBoxLayout(self.pagination)
+        pagination_layout.setContentsMargins(0, 0, 0, 0)
+        self.page_label = QLabel(self.pagination)
+        self.page_label.setProperty("role", "muted")
+        self.previous_button = QPushButton("Previous", self.pagination)
+        self.next_button = QPushButton("Next", self.pagination)
+        self.previous_button.clicked.connect(lambda: self._change_page(-1))
+        self.next_button.clicked.connect(lambda: self._change_page(1))
+        pagination_layout.addWidget(self.page_label, 1)
+        pagination_layout.addWidget(self.previous_button)
+        pagination_layout.addWidget(self.next_button)
+        layout.addWidget(self.pagination)
+        self.pagination.hide()
+
+    def _reset_page(self, *_args):
+        self._page_index = 0
+        self._render_rows()
+
+    def _change_page(self, difference):
+        self._page_index = max(0, self._page_index + difference)
+        self._render_rows()
+
     def show_report(self, report):
         self.report = report
+        self._page_index = 0
         self.total_card.set_value(report.total_files)
         self.clean_card.set_value(report.clean_files)
         self.threat_card.set_value(report.threat_files)
-        self.error_card.set_value(report.error_files)
+        self.error_card.set_value(report.incomplete_files)
         self.summary.setText(
             f"{report.total_files} file{'s' if report.total_files != 1 else ''} checked · "
-            f"{report.threats_found} detection{'s' if report.threats_found != 1 else ''}"
+            f"{report.threats_found} detection{'s' if report.threats_found != 1 else ''} · {report.outcome.title()}"
+            + (" · " + report.warnings[0][:160] if report.warnings else "")
+        )
+        self.summary.setWordWrap(True)
+        self.summary.setTextFormat(Qt.TextFormat.PlainText)
+        self.summary.setToolTip(
+            "No matches means the enabled engines found no known pattern. It is not a guarantee that a file is safe."
         )
         self.export_json_button.setEnabled(True)
         self.export_csv_button.setEnabled(True)
+        self.export_signed_button.setEnabled(True)
         self.results_toolbar.show()
         self.filter_combo.setCurrentIndex(0)
         self._render_rows()
@@ -134,14 +190,34 @@ class ResultsView(QWidget):
             return
 
         filter_index = self.filter_combo.currentIndex()
+        query = self.search_box.text().casefold().strip()
         results = [
             result
             for result in self.report.results
-            if filter_index == 0
-            or (filter_index == 1 and result.is_detected)
-            or (filter_index == 2 and result.is_clean)
-            or (filter_index == 3 and result.status.value == "error")
+            if (
+                filter_index == 0
+                or (filter_index == 1 and result.is_detected)
+                or (filter_index == 2 and result.is_clean)
+                or (filter_index == 3 and result.status.value == "error")
+                or (filter_index == 4 and result.status.value == "skipped")
+            )
+            and (
+                not query
+                or query in result.file_path.casefold()
+                or any(query in threat.name.casefold() for threat in result.threats)
+            )
         ]
+        count = len(results)
+        pages = max(1, (count + self._page_size - 1) // self._page_size)
+        self._page_index = min(self._page_index, pages - 1)
+        self.page_label.setText(
+            f"Page {self._page_index + 1} of {pages} · {count} matching files · exports include every result"
+        )
+        self.previous_button.setEnabled(self._page_index > 0)
+        self.next_button.setEnabled(self._page_index + 1 < pages)
+        self.pagination.setVisible(count > self._page_size)
+        start = self._page_index * self._page_size
+        results = results[start : start + self._page_size]
 
         for result in results:
             row = self.table.rowCount()
@@ -151,19 +227,25 @@ class ResultsView(QWidget):
                 ", ".join(dict.fromkeys(threat.severity for threat in result.threats))
                 or "—"
             )
-            methods = ", ".join(result.detection_methods) or "Local scan"
+            methods = (
+                ", ".join(result.checked_engines or result.detection_methods) or "None"
+            )
             values = [
                 result.file_path,
-                result.status.value.title(),
+                (
+                    "No matches"
+                    if result.status == ScanStatus.CLEAN
+                    else result.status.value.title()
+                ),
                 threats,
                 severities,
                 methods,
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
+                item.setToolTip(str(value))
                 if column == 0:
                     item.setData(Qt.ItemDataRole.UserRole, result)
-                    item.setToolTip(result.file_path)
                 if column == 1:
                     color = {
                         "clean": "#15803D",
@@ -196,14 +278,20 @@ class ResultsView(QWidget):
                 f"• {threat.name} ({threat.severity})\n  {threat.description or 'No additional description.'}"
             )
         threat_text = "\n".join(threat_lines) or "No threats detected."
-        QMessageBox.information(
-            self,
-            "Scan details",
+        engine_text = (
+            "\n".join(f"{key}: {value}" for key, value in result.engine_results.items())
+            or "No engine details"
+        )
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Scan details")
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setText(
             f"File\n{result.file_path}\n\nStatus\n{result.status.value.title()}\n\n"
             f"SHA-256\n{result.sha256 or 'Unavailable'}\n\nDetections\n{threat_text}\n\n"
-            f"Engines\n{', '.join(result.detection_methods) or 'Local scan'}"
+            f"Engine outcomes\n{engine_text}"
             + (f"\n\nNote\n{result.error_message}" if result.error_message else ""),
         )
+        dialog.exec()
 
     def _export(self, format_name: str):
         if self.report is None:
@@ -220,13 +308,16 @@ class ResultsView(QWidget):
         if not path.lower().endswith(f".{extension}"):
             path += f".{extension}"
         try:
-            content = (
-                ReportFormatter.to_json(self.report)
-                if format_name == "json"
-                else ReportFormatter.to_csv(self.report)
-            )
+            if format_name == "signed.json":
+                content = json.dumps(ReportSigner().sign(self.report), indent=2)
+            else:
+                content = (
+                    ReportFormatter.to_json(self.report)
+                    if format_name == "json"
+                    else ReportFormatter.to_csv(self.report)
+                )
             Path(path).write_text(content, encoding="utf-8")
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             QMessageBox.warning(self, "Export failed", str(exc))
             return
         QMessageBox.information(self, "Report exported", f"Saved to:\n{path}")

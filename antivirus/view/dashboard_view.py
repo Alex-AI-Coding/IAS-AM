@@ -81,7 +81,7 @@ class DashboardView(QWidget):
         metrics.setSpacing(13)
         self.total_scans = MetricCard("S", "Total scans")
         self.files_scanned = MetricCard("F", "Files scanned")
-        self.clean_files = MetricCard("✓", "Clean files")
+        self.clean_files = MetricCard("✓", "No matches")
         self.threats_found = MetricCard("!", "Threats found")
         for card in (
             self.total_scans,
@@ -166,6 +166,41 @@ class DashboardView(QWidget):
                 "Local detection is active. Run a scan whenever you want to check a file or folder."
             )
 
+        active = any(
+            state.get("enabled") and state.get("available")
+            for state in engine_states.values()
+        )
+        unavailable = any(
+            state.get("enabled") and not state.get("available")
+            for state in engine_states.values()
+        )
+        if not active:
+            self.protection_title.setText("No detection engine is ready")
+            self.protection_detail.setText(
+                "Enable an available detection engine in Settings before scanning."
+            )
+        elif unavailable:
+            self.protection_title.setText("Some enabled checks are unavailable")
+            self.protection_detail.setText(
+                "Review Settings. Incomplete scans will be labelled clearly in Results."
+            )
+        elif recent_scans and recent_scans[0].get("status") in (
+            "error",
+            "partial",
+            "cancelled",
+        ):
+            self.protection_title.setText("Last scan needs review")
+            self.protection_detail.setText(
+                "The previous scan was incomplete. Review its results and scan again when ready."
+            )
+        elif recent_scans and recent_scans[0].get("status") == "detected":
+            self.protection_title.setText("Suspicious files need review")
+            self.protection_detail.setText(
+                "Review the latest findings. Educational signatures may match harmless demonstration files."
+            )
+        else:
+            self.protection_title.setText("Ready for an on-demand scan")
+
         for key, label in self.engine_status_labels.items():
             state = engine_states.get(key, {})
             enabled = bool(state.get("enabled"))
@@ -176,6 +211,8 @@ class DashboardView(QWidget):
                 text, status = "Key needed", "warning"
             elif not available:
                 text, status = "Unavailable", "warning"
+            elif enabled and key == "hash" and state.get("signature_count") == 0:
+                text, status = "Empty catalog", "warning"
             elif enabled:
                 text, status = "Active", "active"
             else:

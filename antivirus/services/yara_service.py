@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import List
+from antivirus.config.settings import RULE_DIR, YARA_TIMEOUT_SECONDS
 
 try:
     import yara
@@ -12,12 +13,16 @@ except ImportError:  # pragma: no cover - optional dependency
 class YaraService:
     """Wrapper around YARA-based educational signature detection."""
 
-    def __init__(self, rule_dir: str = "antivirus/detection/rules"):
+    def __init__(self, rule_dir: str = str(RULE_DIR)):
         self.rule_dir = Path(rule_dir)
         self._compiler = None
+        self.error_message = None
 
         if yara is not None:
-            self._load_rules()
+            try:
+                self._load_rules()
+            except (OSError, yara.Error) as exc:
+                self.error_message = str(exc)
 
     def _load_rules(self) -> None:
         if not self.rule_dir.exists():
@@ -37,7 +42,9 @@ class YaraService:
 
     def scan_file_details(self, file_path: str) -> List[dict]:
         if yara is None:
-            return []
+            raise RuntimeError(
+                "YARA is not installed; signature checking is unavailable."
+            )
 
         path = Path(file_path)
         if not path.exists():
@@ -46,7 +53,7 @@ class YaraService:
         if self._compiler is None:
             self._load_rules()
 
-        matches = self._compiler.match(str(path))
+        matches = self._compiler.match(str(path), timeout=YARA_TIMEOUT_SECONDS)
         return [
             {
                 "name": match.rule,

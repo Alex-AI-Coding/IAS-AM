@@ -18,7 +18,7 @@ def _draw_shield(painter: QPainter) -> None:
     shield.cubicTo(16, 40, 10, 35, 9, 27)
     shield.lineTo(7, 10)
     shield.closeSubpath()
-    painter.fillPath(shield, QColor("#58B99F"))
+    painter.fillPath(shield, QColor("#5EE4C1"))
 
     check = QPainterPath(QPointF(15, 23))
     check.lineTo(21, 29)
