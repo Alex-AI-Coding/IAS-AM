@@ -82,6 +82,14 @@ An enabled engine failure produces an error or an incomplete-check warning while
 
 The `demo_samples` directory contains a clean sample and clearly marked demonstration files for ransomware, trojan, worm and spyware. Open **Scan → Choose folder** and select that directory.
 
+To place byte-identical harmless samples in several folders or drives you select:
+
+```powershell
+py .\scripts\distribute_demo.py --destination ([Environment]::GetFolderPath('Desktop')) --destination 'E:\' --copies 2
+```
+
+This creates separate `IAS-AM-Scan-Demo` folders with nested sample sets. It preserves existing files and never reuses an existing demo folder. Scan each generated folder recursively using **Scan → Choose folder**. See [the multi-location demo guide](docs/MULTI-LOCATION-DEMO.md) for expected counts, hash seeding and USB-drive limitations.
+
 To demonstrate exact hash matching, seed the one harmless catalogue sample:
 
 ```powershell
