@@ -1,6 +1,6 @@
-# Premiere Security 1.1
+# Premiere Security 1.2
 
-A desktop file-scanning project for Information Assurance and Security (IAS). It combines a PySide6 interface, exact SHA-256 catalogue matching, educational YARA signatures, optional ClamAV, opt-in VirusTotal hash reputation, reports, local history, a CLI and a restricted Flask API.
+A desktop file-scanning project for Information Assurance and Security (IAS). It combines a PySide6 interface, exact SHA-256 catalogue matching, educational YARA signatures, optional ClamAV, opt-in VirusTotal hash reputation, encrypted quarantine, reports, local history, a CLI and a restricted Flask API.
 
 ![Scan page with radar activity](docs/screenshots/scan-radar.png)
 
@@ -19,6 +19,12 @@ py -m venv .venv
 
 These commands work without activating the environment or changing PowerShell execution policy. In VS Code, run **Python: Select Interpreter** and choose `.venv\Scripts\python.exe`.
 
+After closing the app, reopen a terminal in the same root folder and run only:
+
+```powershell
+.venv\Scripts\python.exe -m antivirus.frontend_main
+```
+
 Python 3.12+ is required. The desktop app runs independently of Flask and Docker. The former `IAS-AM-main` duplicate source tree has been consolidated into this root; its README points here.
 
 ## Features
@@ -28,13 +34,36 @@ Python 3.12+ is required. The desktop app runs independently of Flask and Docker
 | Dashboard | Lifetime scan totals, honest engine availability, empty catalogue notice, recent activity |
 | Scan | File, recursive folder and Quick scan; background worker; progress; native radar; safe cancellation |
 | Results | Status filters, file/detection search, pagination, per-engine details, SHA-256 and durations |
+| Quarantine | Manual encrypted isolation, detection type/severity, verification, restore/restore-as, retry and deletion |
 | Reports | JSON and CSV exports; CSV formula escaping; signed JSON with trusted-key verification |
 | History | SQLite summaries, UTC start/end times, targets, detections, skipped entries and warnings |
 | Network | Optional on-demand, read-only connection snapshot without packet capture or process termination |
 | Settings | Saved engine preferences, opt-in stable-download monitoring, reduced motion, privacy information |
 | CLI / API | Structured reports, useful CLI exit codes, authenticated and folder-restricted API |
 
-All scans are read-only. Optional download monitoring checks stable **new or changed** files, keeps summaries in History and posts a status-bar alert. It does not block file opening or move/delete files. Existing downloads require a manual scan. Monitoring is off by default and stops safely on application close. Changing engine settings stops an existing monitor; enable it again to use the new settings.
+All scans are read-only. Choosing **Quarantine selected** explicitly changes files through the separate quarantine service. Optional download monitoring checks stable **new or changed** files, keeps summaries in History and posts a status-bar alert. It does not block file opening or move/delete files. Existing downloads require a manual scan. Monitoring is off by default and stops safely on application close. Changing engine settings stops an existing monitor; enable it again to use the new settings.
+
+Every desktop page uses the reference palette: `#031716`, `#032F30`, `#0A7075`, `#0C969C`, `#6BA3BE`, `#274D60`. Readable light text, amber warnings and a complementary pink danger accent support the ocean theme. Labels communicate meaning independently of color.
+
+## Quarantine
+
+![Quarantine page with illustrative demo evidence](docs/screenshots/quarantine.png)
+
+1. Scan a file or folder. In **Results**, select a detected file with a SHA-256 and choose **Quarantine selected**.
+2. Confirm isolation. The worker checks the current file against the scan hash, streams it into an AES-256-GCM encrypted vault, verifies the stored content, and only then removes the original.
+3. Open **Quarantine** to see the type, highest reported severity, state, detection names, original path, size and SHA-256. Select a row; **Details** shows the full evidence. Hover over the filename for its original path.
+4. Choose **Restore original** or **Restore as…** after reviewing the evidence. The service verifies integrity first and never overwrites an existing destination. An encrypted backup remains until you explicitly delete it.
+5. **Delete vault copy** removes the encrypted copy and retains the activity record. It leaves original/restored files alone. A failed original removal is labelled **Removal unconfirmed** and offers **Retry isolation**, which reverifies both copies before retrying.
+
+The reported type and threat level come from the detecting engines. Unknown classifications stay unknown; educational markers are harmless demonstrations. The app does not infer a specific virus family or a calibrated probability from a generic detection.
+
+Vault files live in `antivirus_data/quarantine`, or under `ANTIVIRUS_DATA_DIR`. The catalogue records evidence separately from scan history. Payload filenames use random IDs; equal original filenames do not collide. The vault, its keys and its catalogue are excluded from normal scans. Runtime contents and vault keys are ignored by Git.
+
+On **Windows**, the AES key is wrapped by DPAPI for the current Windows account. Folder access inherits the OS account's ACLs. On **POSIX**, directories are mode 0700 and the key, catalogue and payloads are mode 0600; the local AES key file is not itself encrypted. Metadata such as paths and detection labels remains plaintext in the private catalogue. This is protection for stored content within a trusted OS account, not an administrator-resistant sandbox or a way to stop already running malware.
+
+Restore publishes the recovered file without replacement using a hard link in its destination folder. Choose an **NTFS or another hard-link-capable filesystem**. FAT/exFAT or restricted network shares may reject this operation; the encrypted backup stays intact. It does not recreate missing folders or restore executable POSIX permissions. Linked paths, junctions, special files and originals with additional hard links are refused. Actions use the same per-file size limit as scanning and run in the background; closing waits for them to finish.
+
+Back up the **whole vault with the app closed**, including its catalogue, payloads and protected key. Keep that backup private. A missing key cannot recover held contents; the app refuses to silently replace it. Windows recovery needs the original account/DPAPI context as well as the key file. Moving or freshly extracting the source into another folder does not automatically move existing app data. Deletion is ordinary file deletion, not a guarantee of forensic secure erasure on SSDs or backups. See [quarantine design, usage and remaining work](docs/QUARANTINE-GUIDE.md).
 
 ## Detection and limits
 

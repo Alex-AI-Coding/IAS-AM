@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import os
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
 from antivirus.services.report_formatter import ReportFormatter
 from antivirus.services.report_signer import ReportSigner
 from antivirus.model.scan_status import ScanStatus
+from antivirus.view.theme import status_color
 from antivirus.view.components import (
     EmptyState,
     MetricCard,
@@ -33,6 +35,8 @@ from antivirus.view.components import (
 
 
 class ResultsView(QWidget):
+    quarantine_requested = Signal(object)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.report = None
@@ -111,6 +115,23 @@ class ResultsView(QWidget):
         layout.addWidget(self.results_toolbar)
         self.results_toolbar.hide()
 
+        actions = QHBoxLayout()
+        instructions = QLabel(
+            "Select a suspicious file to isolate it. Double-click a row for evidence.",
+            self,
+        )
+        instructions.setProperty("role", "hint")
+        instructions.setWordWrap(True)
+        self.quarantine_button = QPushButton("Quarantine selected", self)
+        self.quarantine_button.setProperty("variant", "primary")
+        self.quarantine_button.setEnabled(False)
+        self.quarantine_button.clicked.connect(self._request_quarantine)
+        self._vault_busy = False
+        self._isolated = set()
+        actions.addWidget(instructions, 1)
+        actions.addWidget(self.quarantine_button)
+        layout.addLayout(actions)
+
         self.table = QTableWidget(0, 5, self)
         self.table.setHorizontalHeaderLabels(
             ["File", "Status", "Threat", "Severity", "Checks completed"]
@@ -124,6 +145,7 @@ class ResultsView(QWidget):
         self.table.setColumnWidth(4, 120)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.cellDoubleClicked.connect(self._show_details)
+        self.table.itemSelectionChanged.connect(self._update_quarantine_action)
         self.table.hide()
         layout.addWidget(self.table, 1)
 
@@ -160,6 +182,7 @@ class ResultsView(QWidget):
 
     def show_report(self, report):
         self.report = report
+        self._isolated.clear()
         self._page_index = 0
         self.total_card.set_value(report.total_files)
         self.clean_card.set_value(report.clean_files)
@@ -247,12 +270,7 @@ class ResultsView(QWidget):
                 if column == 0:
                     item.setData(Qt.ItemDataRole.UserRole, result)
                 if column == 1:
-                    color = {
-                        "clean": "#15803D",
-                        "detected": "#C53B3B",
-                        "error": "#B76A05",
-                    }.get(result.status.value, "#66736F")
-                    item.setForeground(QColor(color))
+                    item.setForeground(QColor(status_color(result.status.value)))
                 self.table.setItem(row, column, item)
 
         has_rows = bool(results)
@@ -266,6 +284,56 @@ class ResultsView(QWidget):
             self.empty_state.set_message(
                 "No files found", "The selected location did not contain any files."
             )
+
+        self._update_quarantine_action()
+
+    def _selected_result(self):
+        row = self.table.currentRow()
+        item = self.table.item(row, 0) if row >= 0 else None
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    def _update_quarantine_action(self):
+        result = self._selected_result()
+        isolated = (
+            result is not None
+            and self._quarantine_key(result.file_path, result.sha256) in self._isolated
+        )
+        self.quarantine_button.setEnabled(
+            bool(
+                result
+                and result.is_detected
+                and result.sha256
+                and not isolated
+                and not self._vault_busy
+            )
+        )
+        self.quarantine_button.setText(
+            "Already isolated" if isolated else "Quarantine selected"
+        )
+
+    def set_vault_busy(self, busy):
+        self._vault_busy = busy
+        self._update_quarantine_action()
+
+    def quarantine_changed(self, entry):
+        key = self._quarantine_key(entry.original_path, entry.sha256)
+        if entry.state == "active":
+            self._isolated.add(key)
+        elif entry.state == "restored":
+            self._isolated.discard(key)
+        self._update_quarantine_action()
+
+    @staticmethod
+    def _quarantine_key(path, sha256):
+        return (
+            os.path.normcase(os.path.abspath(os.path.expanduser(path))),
+            (sha256 or "").lower(),
+        )
+
+    def _request_quarantine(self):
+        result = self._selected_result()
+        if result and self.quarantine_button.isEnabled():
+            self.quarantine_requested.emit(result)
 
     def _show_details(self, row, _column):
         item = self.table.item(row, 0)

@@ -8,6 +8,7 @@ from time import monotonic
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QConicalGradient, QPainter, QPen, QFont
 from PySide6.QtWidgets import QWidget
+from antivirus.view.theme import COLORS
 
 
 class ScanRadar(QWidget):
@@ -56,8 +57,8 @@ class ScanRadar(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.translate(self.width() / 2, self.height() / 2)
         radius = min(self.width(), self.height()) / 2 - 7
-        painter.setBrush(QColor("#102D39"))
-        painter.setPen(QPen(QColor("#245264"), 1))
+        painter.setBrush(QColor(COLORS["background"]))
+        painter.setPen(QPen(QColor(COLORS["border"]), 1))
         painter.drawEllipse(QPointF(0, 0), radius, radius)
         for fraction in (0.25, 0.5, 0.75, 1):
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -76,13 +77,16 @@ class ScanRadar(QWidget):
         )
         if scanning:
             gradient = QConicalGradient(QPointF(0, 0), -angle)
-            gradient.setColorAt(0.0, QColor(73, 220, 187, 155))
-            gradient.setColorAt(0.23, QColor(73, 220, 187, 0))
-            gradient.setColorAt(1.0, QColor(73, 220, 187, 0))
+            sweep = QColor(COLORS["signal"])
+            sweep.setAlpha(165)
+            gradient.setColorAt(0.0, sweep)
+            sweep.setAlpha(0)
+            gradient.setColorAt(0.23, sweep)
+            gradient.setColorAt(1.0, sweep)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(gradient)
             painter.drawEllipse(QPointF(0, 0), radius - 1, radius - 1)
-            painter.setPen(QPen(QColor("#60E4C0"), 2))
+            painter.setPen(QPen(QColor(COLORS["highlight"]), 2))
             radians = math.radians(angle)
             painter.drawLine(
                 QPointF(0, 0),
@@ -92,17 +96,27 @@ class ScanRadar(QWidget):
             )
             painter.setPen(Qt.PenStyle.NoPen)
             for x, y in ((22, -25), (-33, 9), (16, 45)):
-                painter.setBrush(QColor("#E6AB93"))
+                painter.setBrush(QColor(COLORS["accent"]))
                 painter.drawEllipse(QPointF(x, y), 3, 3)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(
-            QColor("#5EE4C1" if self.state in ("scanning", "complete") else "#E6AB93")
+            QColor(
+                COLORS["highlight"]
+                if self.state in ("scanning", "complete")
+                else COLORS["accent"]
+            )
         )
         painter.drawEllipse(QPointF(0, 0), 4, 4)
         if self.state != "scanning":
-            painter.setBrush(QColor("#102D39"))
+            painter.setBrush(QColor(COLORS["background"]))
             painter.drawEllipse(QPointF(0, 0), 19, 19)
-            painter.setPen(QColor("#5EE4C1" if self.state == "complete" else "#E6AB93"))
+            painter.setPen(
+                QColor(
+                    COLORS["highlight"]
+                    if self.state == "complete"
+                    else COLORS["accent"]
+                )
+            )
             font = QFont("Segoe UI", 19)
             painter.setFont(font)
             symbol = {"complete": "✓", "error": "!", "cancelled": "■"}.get(

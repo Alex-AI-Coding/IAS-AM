@@ -38,6 +38,7 @@ BASE_DIR = Path(
 RULE_DIR = Path(__file__).resolve().parents[1] / "detection" / "rules"
 THREAT_DB_PATH = BASE_DIR / "threats.db"
 SCAN_DB_PATH = BASE_DIR / "scan_history.db"
+QUARANTINE_DIR = BASE_DIR / "quarantine"
 
 
 def positive_int(name: str, default: int) -> int:

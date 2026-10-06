@@ -114,6 +114,8 @@ def status_pill(text: str, status: str = "inactive") -> QLabel:
 
 
 def configure_table(table: QTableWidget) -> None:
+    table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+    table.setWordWrap(False)
     table.setAlternatingRowColors(True)
     table.setShowGrid(False)
     table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)

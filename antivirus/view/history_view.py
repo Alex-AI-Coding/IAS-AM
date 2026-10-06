@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
+from antivirus.view.theme import status_color
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
@@ -103,12 +104,7 @@ class HistoryView(QWidget):
                 if column == 2:
                     item.setToolTip(target)
                 if column == 6:
-                    color = {
-                        "clean": "#15803D",
-                        "detected": "#C53B3B",
-                        "error": "#B76A05",
-                    }.get(record.get("status", ""), "#66736F")
-                    item.setForeground(QColor(color))
+                    item.setForeground(QColor(status_color(record.get("status", ""))))
                 self.table.setItem(row, column, item)
         has_records = bool(records)
         if not has_records:

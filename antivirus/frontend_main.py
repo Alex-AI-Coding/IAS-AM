@@ -17,7 +17,7 @@ def main() -> int:
     application = QApplication(sys.argv)
     application.setApplicationName("Premiere Security")
     application.setOrganizationName("IAS")
-    application.setApplicationVersion("1.1.0")
+    application.setApplicationVersion("1.2.0")
     application.setWindowIcon(create_app_icon())
     apply_theme(application)
     try:

@@ -8,7 +8,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Callable
 
-from antivirus.config.settings import MAX_SCAN_FILES
+from antivirus.config.settings import MAX_SCAN_FILES, QUARANTINE_DIR
 from antivirus.detection.detection_engine import DetectionEngine
 from antivirus.model.scan_report import ScanReport
 from antivirus.model.scan_result import ScanResult
@@ -17,14 +17,42 @@ from antivirus.model.scan_status import ScanStatus
 
 class Scanner:
     def __init__(
-        self, detection_engine: DetectionEngine | None = None, max_files=MAX_SCAN_FILES
+        self,
+        detection_engine: DetectionEngine | None = None,
+        max_files=MAX_SCAN_FILES,
+        excluded_roots=None,
     ):
         self.detection_engine = detection_engine or DetectionEngine()
         if max_files <= 0:
             raise ValueError("max_files must be positive")
         self.max_files = max_files
+        self.excluded_roots = tuple(
+            Path(path).absolute()
+            for path in (
+                excluded_roots if excluded_roots is not None else (QUARANTINE_DIR,)
+            )
+        )
+
+    def _is_excluded(self, path):
+        target = Path(os.path.abspath(path))
+        for root in self.excluded_roots:
+            if target.is_relative_to(root):
+                return True
+            try:
+                if target.resolve().is_relative_to(root.resolve()):
+                    return True
+            except (OSError, RuntimeError):
+                # The detection engine reports unreadable or looping linked paths.
+                continue
+        return False
 
     def scan_file(self, file_path: str) -> ScanResult:
+        if self._is_excluded(file_path):
+            return ScanResult(
+                file_path,
+                ScanStatus.SKIPPED,
+                error_message="The protected quarantine area is excluded from scanning.",
+            )
         return self.detection_engine.analyze_file(file_path)
 
     def scan_directory(
@@ -58,6 +86,13 @@ class Scanner:
             if cancelled():
                 break
             root = Path(directory_path).absolute()
+            if self._is_excluded(root):
+                traversal_error(
+                    root,
+                    "The protected quarantine area is excluded from scanning.",
+                    ScanStatus.SKIPPED,
+                )
+                continue
             if root.is_symlink() or (
                 hasattr(root, "is_junction") and root.is_junction()
             ):
@@ -81,6 +116,14 @@ class Scanner:
                 subdirectories.sort()
                 for name in subdirectories[:]:
                     child = Path(directory, name)
+                    if self._is_excluded(child):
+                        subdirectories.remove(name)
+                        traversal_error(
+                            child,
+                            "Protected quarantine folder excluded.",
+                            ScanStatus.SKIPPED,
+                        )
+                        continue
                     if child.is_symlink() or (
                         hasattr(child, "is_junction") and child.is_junction()
                     ):

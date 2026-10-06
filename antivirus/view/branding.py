@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QWidget
+from antivirus.view.theme import COLORS
 
 
 def _draw_shield(painter: QPainter) -> None:
@@ -18,12 +19,12 @@ def _draw_shield(painter: QPainter) -> None:
     shield.cubicTo(16, 40, 10, 35, 9, 27)
     shield.lineTo(7, 10)
     shield.closeSubpath()
-    painter.fillPath(shield, QColor("#5EE4C1"))
+    painter.fillPath(shield, QColor(COLORS["signal"]))
 
     check = QPainterPath(QPointF(15, 23))
     check.lineTo(21, 29)
     check.lineTo(32, 17)
-    painter.setPen(QPen(QColor("#F0F5F3"), 3.1, Qt.PenStyle.SolidLine))
+    painter.setPen(QPen(QColor(COLORS["background"]), 3.1, Qt.PenStyle.SolidLine))
     painter.drawPath(check)
 
 

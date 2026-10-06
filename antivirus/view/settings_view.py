@@ -154,7 +154,9 @@ class SettingsView(QWidget):
             "Scans run locally by default. History stores paths, times, counts, and detection summaries; "
             "it does not store file contents. Exported reports may reveal sensitive file names. "
             "VirusTotal receives hashes only when enabled; hashes can identify known files. "
-            "Download monitoring is optional and does not quarantine or delete files.",
+            "Download monitoring is optional and does not quarantine or delete files. "
+            "Manual Quarantine encrypts contents in your local vault; its catalogue retains "
+            "paths and detection evidence.",
             privacy,
         )
         privacy_text.setProperty("role", "muted")

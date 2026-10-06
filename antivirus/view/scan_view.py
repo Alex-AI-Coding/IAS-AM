@@ -252,6 +252,8 @@ class ScanView(QWidget):
         )
 
     def _start_scan(self, operation, path, title, supports_progress=False):
+        if not self.isEnabled():
+            return
         if self._thread is not None:
             return
         self._thread = QThread(self)
@@ -276,6 +278,7 @@ class ScanView(QWidget):
         self._thread.finished.connect(self._scan_thread_finished)
         self._thread.start()
 
+    @Slot(object)
     def _scan_finished(self, result):
         self._pending_result = result
         self.radar.set_state(
@@ -306,6 +309,7 @@ class ScanView(QWidget):
             )
         self.progress_title.setText("Scan complete")
 
+    @Slot(str)
     def _scan_failed(self, message):
         self.radar.set_state("error")
         self.progress.setRange(0, 1)
@@ -315,6 +319,7 @@ class ScanView(QWidget):
             f"Premiere Security could not complete this scan: {message}"
         )
 
+    @Slot(object)
     def _scan_cancelled(self, result):
         self._pending_result = result
         self.radar.set_state("cancelled")
@@ -325,6 +330,7 @@ class ScanView(QWidget):
             "The scan stopped safely. Partial results are available in Results."
         )
 
+    @Slot(int, int, str)
     def _scan_progress(self, current, total, path):
         self.progress.setRange(0, max(total, 1))
         self.progress.setValue(current)
@@ -350,7 +356,9 @@ class ScanView(QWidget):
             self.cancel_button.setEnabled(False)
             self.status_label.setText("Stopping safely after the current file…")
 
+    @Slot()
     def _scan_thread_finished(self):
+        self._thread.wait()
         self._set_scan_controls_enabled(True)
         self.cancel_button.hide()
         self.cancel_button.setEnabled(True)

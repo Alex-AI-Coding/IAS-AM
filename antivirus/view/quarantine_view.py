@@ -1,0 +1,470 @@
+"""Explicit quarantine actions, threat evidence and asynchronous vault work."""
+
+import ntpath
+
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from antivirus.services.quarantine_service import QuarantineService
+from antivirus.view.components import (
+    EmptyState,
+    MetricCard,
+    configure_table,
+    display_datetime,
+    page_header,
+)
+from antivirus.view.theme import COLORS
+
+
+class VaultWorker(QObject):
+    ready = Signal(object)
+    failed = Signal(str)
+    done = Signal()
+
+    def __init__(self, operation):
+        super().__init__()
+        self.operation = operation
+
+    @Slot()
+    def run(self):
+        try:
+            self.ready.emit(self.operation())
+        except Exception as exc:
+            self.failed.emit(
+                str(exc) or "The quarantine action could not be completed."
+            )
+        finally:
+            self.done.emit()
+
+
+class QuarantineView(QWidget):
+    busy_changed = Signal(bool)
+    item_changed = Signal(object)
+
+    def __init__(self, service=None, parent=None):
+        super().__init__(parent)
+        self.service = service or QuarantineService()
+        self._thread = self._worker = None
+        self._pending_result = None
+        self._pending_error = ""
+        self._items = []
+        self._read_error = False
+        self._page = 0
+        self._page_size = 200
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 27, 30, 26)
+        layout.setSpacing(16)
+        heading = QHBoxLayout()
+        heading.addWidget(
+            page_header(
+                "Quarantine",
+                "Keep detected files encrypted, review the evidence, and choose what happens next.",
+            ),
+            1,
+        )
+        self.refresh_button = QPushButton("Refresh", self)
+        self.refresh_button.clicked.connect(self.refresh)
+        heading.addWidget(self.refresh_button)
+        layout.addLayout(heading)
+
+        metrics = QHBoxLayout()
+        self.held_card = MetricCard("Q", "Isolated files")
+        self.review_card = MetricCard("!", "Need attention")
+        self.restored_card = MetricCard("↗", "Restored backups")
+        for card in (self.held_card, self.review_card, self.restored_card):
+            metrics.addWidget(card, 1)
+        layout.addLayout(metrics)
+
+        tools = QHBoxLayout()
+        self.status = QLabel(
+            "Choose a detected file in Results to quarantine it.", self
+        )
+        self.status.setWordWrap(True)
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
+        self.status.setProperty("role", "muted")
+        self.search = QLineEdit(self)
+        self.search.setPlaceholderText("Find file or threat…")
+        self.search.setAccessibleName("Search quarantine")
+        self.search.setMaximumWidth(235)
+        self.search.textChanged.connect(self._reset_page)
+        self.filter = QComboBox(self)
+        self.filter.addItems(
+            ["Held files", "All activity", "Needs attention", "Restored", "Deleted"]
+        )
+        self.filter.currentIndexChanged.connect(self._reset_page)
+        tools.addWidget(self.status, 1)
+        tools.addWidget(self.search)
+        tools.addWidget(self.filter)
+        layout.addLayout(tools)
+
+        self.table = QTableWidget(0, 6, self)
+        self.table.setHorizontalHeaderLabels(
+            ["Original file", "Threat type", "Severity", "State", "Detection", "Added"]
+        )
+        configure_table(self.table)
+        for column, width in enumerate((230, 140, 95, 210, 200, 170)):
+            self.table.setColumnWidth(column, width)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setMinimumHeight(210)
+        self.table.itemSelectionChanged.connect(self._update_actions)
+        self.table.cellDoubleClicked.connect(lambda *_: self.show_details())
+        layout.addWidget(self.table, 1)
+        self.empty = EmptyState(
+            "◇",
+            "Your quarantine is empty",
+            "Detected files stay in place until you choose to quarantine them in Results.",
+            self,
+        )
+        layout.addWidget(self.empty, 1)
+
+        pagination = QHBoxLayout()
+        self.page_label = QLabel(self)
+        self.page_label.setProperty("role", "muted")
+        self.previous = QPushButton("Previous", self)
+        self.next = QPushButton("Next", self)
+        self.previous.clicked.connect(lambda: self._change_page(-1))
+        self.next.clicked.connect(lambda: self._change_page(1))
+        pagination.addWidget(self.page_label, 1)
+        pagination.addWidget(self.previous)
+        pagination.addWidget(self.next)
+        layout.addLayout(pagination)
+
+        actions = QHBoxLayout()
+        self.details_button = QPushButton("Details", self)
+        self.restore_button = QPushButton("Restore original", self)
+        self.restore_as_button = QPushButton("Restore as…", self)
+        self.retry_button = QPushButton("Retry isolation", self)
+        self.delete_button = QPushButton("Delete vault copy", self)
+        self.restore_button.setProperty("variant", "primary")
+        self.delete_button.setProperty("variant", "danger")
+        self.details_button.clicked.connect(self.show_details)
+        self.restore_button.clicked.connect(lambda: self.restore_selected())
+        self.restore_as_button.clicked.connect(
+            lambda: self.restore_selected(choose_path=True)
+        )
+        self.retry_button.clicked.connect(self.retry_selected)
+        self.delete_button.clicked.connect(self.delete_selected)
+        for button in (
+            self.details_button,
+            self.restore_button,
+            self.restore_as_button,
+            self.retry_button,
+            self.delete_button,
+        ):
+            actions.addWidget(button)
+        layout.insertLayout(3, actions)
+        note = QLabel(
+            "Restore releases a flagged file. Delete removes only its encrypted vault copy; "
+            "any original or restored file stays in place. Type and severity come from the detecting engines.",
+            self,
+        )
+        note.setProperty("role", "hint")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        self.refresh()
+
+    def is_busy(self):
+        return self._thread is not None
+
+    def _selected(self):
+        row = self.table.currentRow()
+        item = self.table.item(row, 0) if row >= 0 else None
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    def refresh(self):
+        if self.is_busy():
+            return
+        try:
+            self._items = self.service.items()
+            self._read_error = False
+        except Exception as exc:
+            self.status.setText(f"Quarantine could not be read: {exc}")
+            self._items = []
+            self._read_error = True
+            for card in (self.held_card, self.review_card, self.restored_card):
+                card.set_value("—")
+            self._render()
+            return
+        self.held_card.set_value(sum(i.state == "active" for i in self._items))
+        self.review_card.set_value(
+            sum(
+                i.state in {"copy_retained", "incomplete", "pending", "deleting"}
+                for i in self._items
+            )
+        )
+        self.restored_card.set_value(sum(i.state == "restored" for i in self._items))
+        self._render()
+
+    def _reset_page(self, *_):
+        self._page = 0
+        self._render()
+
+    def _change_page(self, difference):
+        self._page = max(0, self._page + difference)
+        self._render()
+
+    def _render(self):
+        selection = self.filter.currentIndex()
+        query = self.search.text().casefold().strip()
+        results = [
+            i
+            for i in self._items
+            if (
+                selection == 1
+                or (selection == 0 and i.state != "deleted")
+                or (
+                    selection == 2
+                    and i.state
+                    in {"copy_retained", "incomplete", "pending", "deleting"}
+                )
+                or (selection == 3 and i.state == "restored")
+                or (selection == 4 and i.state == "deleted")
+            )
+            and (
+                not query
+                or query
+                in (
+                    i.original_path
+                    + i.categories
+                    + " ".join(t.get("name", "") for t in i.threats)
+                ).casefold()
+            )
+        ]
+        pages = max(1, (len(results) + self._page_size - 1) // self._page_size)
+        self._page = min(self._page, pages - 1)
+        self.page_label.setText(
+            f"Page {self._page + 1} of {pages} · {len(results)} matching items"
+        )
+        self.previous.setEnabled(not self.is_busy() and self._page > 0)
+        self.next.setEnabled(not self.is_busy() and self._page + 1 < pages)
+        self.previous.setVisible(pages > 1)
+        self.next.setVisible(pages > 1)
+        self.table.setRowCount(0)
+        start = self._page * self._page_size
+        for entry in results[start : start + self._page_size]:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            values = (
+                ntpath.basename(entry.original_path),
+                entry.categories,
+                entry.severity,
+                entry.state_label,
+                ", ".join(t.get("name", "Unknown") for t in entry.threats),
+                display_datetime(entry.added_at),
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setToolTip(value)
+                if column == 0:
+                    item.setToolTip(entry.original_path)
+                    item.setData(Qt.ItemDataRole.UserRole, entry)
+                if column == 2:
+                    item.setForeground(
+                        QColor(
+                            COLORS["danger"]
+                            if entry.severity in {"High", "Critical"}
+                            else (
+                                COLORS["warning"]
+                                if entry.severity == "Medium"
+                                else COLORS["muted"]
+                            )
+                        )
+                    )
+                self.table.setItem(row, column, item)
+        self.table.setVisible(bool(results))
+        self.empty.setVisible(not results)
+        if self._read_error:
+            self.empty.set_message(
+                "Quarantine needs attention",
+                "The catalogue could not be read. See the message above.",
+            )
+        elif self._items and not results:
+            self.empty.set_message(
+                "No matching items", "Choose another filter or search term."
+            )
+        elif not self._items:
+            self.empty.set_message(
+                "Your quarantine is empty",
+                "Detected files stay in place until you choose to quarantine them in Results.",
+            )
+        self._update_actions()
+
+    def _update_actions(self):
+        entry = self._selected()
+        ready = entry is not None and not self.is_busy()
+        self.details_button.setEnabled(ready)
+        can_restore = ready and entry.state in {"active", "copy_retained"}
+        self.restore_button.setEnabled(can_restore)
+        self.restore_as_button.setEnabled(can_restore)
+        self.retry_button.setEnabled(ready and entry.state == "copy_retained")
+        self.delete_button.setEnabled(ready and entry.state != "deleted")
+
+    def _confirm(self, title, text):
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(title)
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setText(text)
+        dialog.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
+        )
+        dialog.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        return dialog.exec() == QMessageBox.StandardButton.Yes
+
+    def quarantine_result(self, result):
+        if self.is_busy() or not result.is_detected:
+            return False
+        if not self._confirm(
+            "Quarantine detected file?",
+            f"{result.file_path}\n\nThe file will be encrypted in your private quarantine. "
+            "Its original is removed only after the stored copy passes verification. It will not be executed.",
+        ):
+            return False
+        self._start("Isolating detected file…", lambda: self.service.quarantine(result))
+        return True
+
+    def restore_selected(self, choose_path=False):
+        entry = self._selected()
+        if entry is None or self.is_busy():
+            return
+        destination = entry.original_path
+        if choose_path:
+            destination, _ = QFileDialog.getSaveFileName(
+                self,
+                "Restore flagged file as",
+                entry.original_path,
+                options=QFileDialog.Option.DontConfirmOverwrite,
+            )
+            if not destination:
+                return
+        if not self._confirm(
+            "Restore a flagged file?",
+            f"Restore to:\n{destination}\n\nReported type: {entry.categories}\nSeverity: {entry.severity}\n\n"
+            "Restoring can reintroduce the detected threat. Existing files will not be overwritten. "
+            "An encrypted backup will remain until you delete it.",
+        ):
+            return
+        self._start(
+            "Verifying and restoring file…",
+            lambda: self.service.restore(entry.entry_id, destination),
+        )
+
+    def retry_selected(self):
+        entry = self._selected()
+        if (
+            entry
+            and not self.is_busy()
+            and self._confirm(
+                "Retry original removal?",
+                f"{entry.original_path}\n\nThe vault copy and original will be reverified "
+                "before removing the original. "
+                "A changed original will be kept.",
+            )
+        ):
+            self._start(
+                "Retrying verified isolation…",
+                lambda: self.service.retry_isolation(entry.entry_id),
+            )
+
+    def delete_selected(self):
+        entry = self._selected()
+        if (
+            entry
+            and not self.is_busy()
+            and self._confirm(
+                "Permanently delete vault copy?",
+                f"{entry.original_path}\n\nThis removes the encrypted quarantine copy permanently. "
+                "The activity record remains. Any original or restored file is left in place.",
+            )
+        ):
+            self._start(
+                "Deleting encrypted vault copy…",
+                lambda: self.service.delete(entry.entry_id),
+            )
+
+    def show_details(self):
+        entry = self._selected()
+        if entry is None:
+            return
+        detections = "\n".join(
+            f"• {t.get('name')} · {t.get('category')} · {t.get('severity')} · {t.get('source')}\n  "
+            f"{t.get('description') or 'No additional description.'}"
+            for t in entry.threats
+        )
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Quarantine evidence")
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setText(
+            f"Original file\n{entry.original_path}\n\nType: {entry.categories}\n"
+            f"Highest reported severity: {entry.severity}\nState: {entry.state_label}\n"
+            f"Size: {entry.file_size:,} bytes\n\nSHA-256\n{entry.sha256}\n\nDetections\n{detections}\n\n"
+            f"Added: {display_datetime(entry.added_at)}"
+            + (f"\nRestored to: {entry.restored_path}" if entry.restored_path else "")
+            + (f"\n\nAttention\n{entry.error_message}" if entry.error_message else "")
+        )
+        dialog.exec()
+
+    def _start(self, message, operation):
+        if self.is_busy():
+            return
+        self._pending_result = None
+        self._pending_error = ""
+        self.status.setText(message)
+        self._thread = QThread(self)
+        self._worker = VaultWorker(operation)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.ready.connect(self._capture_result)
+        self._worker.failed.connect(self._capture_error)
+        self._worker.done.connect(self._thread.quit)
+        self._worker.done.connect(self._worker.deleteLater)
+        self._thread.finished.connect(self._finished)
+        self.refresh_button.setEnabled(False)
+        self._update_actions()
+        self.busy_changed.emit(True)
+        self._thread.start()
+
+    @Slot(object)
+    def _capture_result(self, result):
+        self._pending_result = result
+
+    @Slot(str)
+    def _capture_error(self, error):
+        self._pending_error = error
+
+    @Slot()
+    def _finished(self):
+        # finished can precede native thread-local cleanup. Join before releasing
+        # Python worker references or allowing a new file-changing operation.
+        self._thread.wait()
+        self._thread.deleteLater()
+        self._thread = self._worker = None
+        self.refresh_button.setEnabled(True)
+        self.refresh()
+        self.busy_changed.emit(False)
+        if self._pending_error:
+            self.status.setText(self._pending_error)
+        elif self._pending_result:
+            entry = self._pending_result
+            messages = {
+                "active": "File isolated. Its original has been removed.",
+                "restored": "File restored. Its encrypted backup remains until you delete it.",
+                "deleted": "Encrypted vault copy deleted. Original and restored files were left in place.",
+            }
+            self.status.setText(
+                messages.get(entry.state, entry.error_message or entry.state_label)
+            )
+            self.item_changed.emit(entry)
+        self._update_actions()

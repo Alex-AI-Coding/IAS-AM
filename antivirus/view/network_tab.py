@@ -83,6 +83,7 @@ class NetworkMonitorTab(QWidget):
         self._thread.finished.connect(self._finished)
         self._thread.start()
 
+    @Slot(object)
     def _show_rows(self, rows):
         self.table.setRowCount(len(rows))
         for index, row in enumerate(rows):
@@ -96,7 +97,9 @@ class NetworkMonitorTab(QWidget):
             f"{len(rows)} active remote connections. This snapshot is informational; no traffic was blocked."
         )
 
+    @Slot()
     def _finished(self):
+        self._thread.wait()
         self._thread.deleteLater()
         self._thread = self._worker = None
         self.refresh_button.setEnabled(True)

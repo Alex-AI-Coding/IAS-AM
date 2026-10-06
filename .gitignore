@@ -47,6 +47,10 @@ htmlcov/
 
 # Data and databases
 antivirus_data/
+# Encrypted quarantine contents and account-bound vault keys are never source.
+*.qvault
+vault-key.bin
+vault-key.dpapi
 *.db
 *.sqlite
 *.sqlite3

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QButtonGroup,
     QHBoxLayout,
@@ -27,6 +27,7 @@ from antivirus.view.results_view import ResultsView
 from antivirus.view.scan_view import ScanView
 from antivirus.view.settings_view import SettingsView
 from antivirus.view.network_tab import NetworkMonitorTab
+from antivirus.view.quarantine_view import QuarantineView
 from antivirus.services.download_watcher import DownloadWatcherService
 from antivirus.services.scanner import Scanner
 from antivirus.detection.detection_engine import DetectionEngine
@@ -60,7 +61,7 @@ class TopNavigation(QWidget):
             )
             self._group.addButton(button, index)
             self._buttons.append(button)
-            layout.addWidget(button)
+            layout.addWidget(button, 1)
 
     def setCurrentIndex(self, index: int) -> None:
         if not 0 <= index < len(self._buttons):
@@ -78,8 +79,16 @@ class TopNavigation(QWidget):
 class MainWindow(QMainWindow):
     """Application shell with a desktop-style top navigation bar."""
 
-    PAGE_NAMES = ("Dashboard", "Scan", "Results", "History", "Network", "Settings")
-    DASHBOARD, SCAN, RESULTS, HISTORY, NETWORK, SETTINGS = range(6)
+    PAGE_NAMES = (
+        "Dashboard",
+        "Scan",
+        "Results",
+        "Quarantine",
+        "History",
+        "Network",
+        "Settings",
+    )
+    DASHBOARD, SCAN, RESULTS, QUARANTINE, HISTORY, NETWORK, SETTINGS = range(7)
     download_ready = Signal(object)
     monitor_failed = Signal(str)
 
@@ -114,10 +123,12 @@ class MainWindow(QMainWindow):
 
         top_bar = QWidget(root)
         top_bar.setObjectName("TopBar")
-        top_bar.setFixedHeight(78)
-        top_layout = QHBoxLayout(top_bar)
-        top_layout.setContentsMargins(22, 0, 22, 0)
-        top_layout.setSpacing(16)
+        top_bar.setFixedHeight(126)
+        top_layout = QVBoxLayout(top_bar)
+        top_layout.setContentsMargins(22, 10, 22, 10)
+        top_layout.setSpacing(8)
+        branding = QHBoxLayout()
+        branding.setSpacing(12)
 
         mark = AppLogo(top_bar)
 
@@ -133,11 +144,14 @@ class MainWindow(QMainWindow):
         self.navigation = TopNavigation(self.PAGE_NAMES, top_bar)
         self.navigation.setObjectName("TopNavigation")
 
-        top_layout.addWidget(mark)
-        top_layout.addLayout(brand_text)
-        top_layout.addSpacing(24)
+        branding.addWidget(mark)
+        branding.addLayout(brand_text)
+        branding.addStretch()
+        workspace_label = QLabel("Local scanning · Private quarantine", top_bar)
+        workspace_label.setProperty("role", "brandSubtitle")
+        branding.addWidget(workspace_label)
+        top_layout.addLayout(branding)
         top_layout.addWidget(self.navigation)
-        top_layout.addStretch()
 
         self.pages = QStackedWidget(root)
         self.pages.setObjectName("PageStack")
@@ -149,6 +163,7 @@ class MainWindow(QMainWindow):
             self.pages,
         )
         self.results_view = ResultsView(self.pages)
+        self.quarantine_view = QuarantineView(parent=self.pages)
         self.history_view = HistoryView(self.history_controller, self.pages)
         self.settings_view = SettingsView(self.pages)
         self.network_tab = NetworkMonitorTab(self.pages)
@@ -156,6 +171,7 @@ class MainWindow(QMainWindow):
             self.dashboard_view,
             self.scan_view,
             self.results_view,
+            self.quarantine_view,
             self.history_view,
             self.network_tab,
             self.settings_view,
@@ -178,12 +194,38 @@ class MainWindow(QMainWindow):
             lambda: self.settings_view.setEnabled(False)
         )
         self.scan_view.scan_idle.connect(lambda: self.settings_view.setEnabled(True))
+        self.scan_view.scan_started.connect(
+            lambda: self.quarantine_view.setEnabled(False)
+        )
+        self.scan_view.scan_idle.connect(lambda: self.quarantine_view.setEnabled(True))
+        self.scan_view.scan_started.connect(
+            lambda: self.results_view.set_vault_busy(True)
+        )
+        self.scan_view.scan_idle.connect(
+            lambda: self.results_view.set_vault_busy(self.quarantine_view.is_busy())
+        )
         self.dashboard_view.start_scan.connect(self._quick_scan_from_dashboard)
         self.dashboard_view.open_history.connect(
             lambda: self.navigation.setCurrentIndex(self.HISTORY)
         )
         self.settings_view.setting_changed.connect(self._setting_changed)
         self.history_view.history_changed.connect(self._refresh_dashboard)
+        self.results_view.quarantine_requested.connect(self._quarantine_result)
+        self.quarantine_view.item_changed.connect(self.results_view.quarantine_changed)
+        self.quarantine_view.busy_changed.connect(self._vault_busy_changed)
+
+    def _vault_busy_changed(self, busy):
+        self.results_view.set_vault_busy(busy or self.scan_view.is_scanning())
+        self.scan_view.setEnabled(not busy)
+
+    def _quarantine_result(self, result):
+        if self.scan_view.is_scanning():
+            self.statusBar().showMessage(
+                "Wait for the scan to finish before isolating a file."
+            )
+            return
+        if self.quarantine_view.quarantine_result(result):
+            self.navigation.setCurrentIndex(self.QUARANTINE)
 
     def _navigate(self, row):
         current_row = self.pages.currentIndex()
@@ -214,6 +256,8 @@ class MainWindow(QMainWindow):
         elif row == self.SETTINGS:
             states = self.scan_controller.scanner.detection_engine.get_engine_states()
             self.settings_view.update_availability(states)
+        elif row == self.QUARANTINE:
+            self.quarantine_view.refresh()
 
     def _setting_changed(self, key, enabled):
         attribute = {
@@ -239,6 +283,11 @@ class MainWindow(QMainWindow):
             self._refresh_dashboard()
 
     def _quick_scan_from_dashboard(self):
+        if self.quarantine_view.is_busy():
+            self.statusBar().showMessage(
+                "Wait for the quarantine action to finish before starting a scan."
+            )
+            return
         self.navigation.setCurrentIndex(self.SCAN)
         QTimer.singleShot(100, self.scan_view.start_quick_scan)
 
@@ -297,12 +346,14 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self._monitor_failed(str(exc))
 
+    @Slot(str)
     def _monitor_failed(self, message):
         if self.download_watcher:
             self.download_watcher.stop()
         self.settings_view.set_saved_value("download_monitor_enabled", False)
         self.statusBar().showMessage(f"Download monitoring is off: {message}")
 
+    @Slot(object)
     def _download_result(self, result):
         if self._closing:
             return
@@ -342,6 +393,7 @@ class MainWindow(QMainWindow):
         return (
             self.scan_view.is_scanning()
             or self.network_tab.is_busy()
+            or self.quarantine_view.is_busy()
             or bool(self.download_watcher and self.download_watcher.has_pending_work())
         )
 

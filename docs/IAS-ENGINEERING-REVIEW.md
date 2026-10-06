@@ -1,6 +1,6 @@
 # IAS-AM engineering review and presentation guide
 
-Reviewed baseline: `0947e0d25ae686448e7cbaa068fff9604be39897` from `Alex-AI-Coding/IAS-AM`. Review date: October 5, 2026. The edited application is **Premiere Security 1.1**.
+Reviewed original baseline: `0947e0d25ae686448e7cbaa068fff9604be39897` from `Alex-AI-Coding/IAS-AM`. Original review: October 5, 2026. Quarantine/theme update: October 6, 2026, from `135a69b3f53bfe758570daea0b4d96ea96b97b97`. The edited application is **Premiere Security 1.2**.
 
 This guide separates verified software behavior, classroom demonstrations, documented designs and future improvements. The course mapping follows **IAS_Module.pdf, IAS 101, PRMSU, First Edition 2025**, found among the available course materials. A project-specific grading rubric was not supplied; the instructor determines whether the evidence meets the assessment requirements.
 
@@ -33,7 +33,7 @@ This guide separates verified software behavior, classroom demonstrations, docum
 | Network/kill-switch UI in nested copy | Extra page with stale indices and blocking work | Read-only asynchronous connection inventory; no process termination |
 | Packet inspection in nested copy | Privilege-dependent sniffer; generic words and test addresses | Not represented as a reliable detector; retained as review/history material |
 | HTTP/HTTPS proxy in nested copy | Stub returning 501; CONNECT announced success without piping data | Removed from startup; it could not provide the advertised protection |
-| Automatic “quarantine” in nested copy | Filename-based rename, collisions/cross-volume problems, detection mismatch | Replaced with alerting; a safe quarantine subsystem remains future work |
+| Automatic “quarantine” in nested copy | Filename-based rename, collisions/cross-volume problems, detection mismatch | Replaced with alerting; v1.2 adds explicit verified encrypted quarantine, restore and deletion |
 
 Service methods for threat distribution, top threats, detection summary and recent performance remain available. Those analytics are not all exposed as dashboard charts. No rule feed, labelled accuracy dataset or genuine production protection was present.
 
@@ -71,13 +71,16 @@ Files are never executed. Links and special files are skipped, and file identity
 ## 3. New features
 
 - A native vector radar tied to scan start, completion, failure and cancellation. It stops when hidden or idle and has a reduced-motion setting. Decorative dots are not threat detections.
-- A restrained navy/teal/coral interface with neutral surfaces, visible keyboard focus, clear status labels and scrollable pages.
+- An ocean interface using the six reference-image colors, derived readable text, complementary danger accents, visible keyboard focus and scrollable pages.
 - Searchable, paged results with completed-check coverage and visible incomplete entries.
 - Ed25519 signed JSON reports and a verification CLI requiring an independently trusted public key.
 - Opt-in monitoring of stable new/changed downloads with local history and status-bar notifications.
 - On-demand asynchronous network connection snapshots without payload capture or kill controls.
 - Harmless classroom samples for all four rule categories and an exact-hash seeding helper.
 - CI configuration for Python 3.12/3.13 on Windows and Linux.
+- Verified encrypted quarantine with engine-provided type/severity, restore/restore-as, retry after unconfirmed removal, deletion and retained activity evidence. See [the quarantine guide](QUARANTINE-GUIDE.md).
+- Account-bound Windows DPAPI wrapping for the AES vault key; private POSIX directories/key/payloads. Restores verify integrity and never overwrite existing files.
+- Explicit GUI-thread worker receivers and joined native cleanup; foreground scans and quarantine actions cannot start together.
 
 The private signing key is local software key material. On POSIX its creation mode is 0600; on Windows the enclosing account/folder ACL determines access. It is unencrypted. A signature proves integrity relative to a trusted key; it does not by itself prove a person's identity, guarantee nonrepudiation, or certify regulatory compliance.
 
@@ -104,7 +107,7 @@ The private signing key is local software key material. On POSIX its creation mo
 | 4.1 Risk management | Design | Identify assets/threats, assess likelihood/impact, select controls, review residual risk |
 | 4.2 Risks, threats and vulnerabilities | Partial | Risk register connects real defects to controls and test evidence |
 | 4.3 Operational threat environments | Partial | Offline/online outages, untrusted downloads, metadata exposure and local trust boundary |
-| 4.4 Managing and mitigating risk | Code + design | Read-only operation, bounds, reviewable detections and remaining roadmap |
+| 4.4 Managing and mitigating risk | Code + design | Read-only scans, verified manual isolation, safe recovery, bounds and remaining roadmap |
 | 5.1 Access-control technology | Code | API credential check and filesystem capability boundary; OS folder permissions |
 | 5.2 Formal access-control models | Partial | OS DAC and configured path rules; compare DAC/MAC/RBAC/RuBAC/ABAC below |
 | 5.3 Identity management | Partial | Shared-token authentication, scope authorization, scan traceability; no user directory/MFA |
@@ -126,14 +129,14 @@ The private signing key is local software key material. On POSIX its creation mo
 | 9.4 Security metrics | Partial | Counts and durations exist; true accuracy/FPR require labelled ground truth |
 | 9.5 QA and QC | Code + process | Baseline/revised tests, formatting/lint, UI screenshots, review and future CI |
 
-An antivirus project cannot credibly implement every institutional security framework and network protocol. Understanding is shown by explaining what each concept means, which controls demonstrate it, and where other systems/processes are required. If the instructor specifically requires user roles, MFA, encryption at rest or a functioning quarantine, treat those as separate acceptance criteria before claiming completion.
+An antivirus project cannot credibly implement every institutional security framework and network protocol. Understanding is shown by explaining each concept, the controls that demonstrate it, and the systems/processes still required. Version 1.2 demonstrates payload encryption at rest and manual quarantine/recovery; user roles and MFA remain unimplemented. The instructor's actual acceptance criteria still determine completion.
 
 ### The five assurance pillars
 
 | Pillar | Evidence in this project | Honest boundary |
 |---|---|---|
-| Confidentiality | Local scans, no content upload, optional hash lookup, scoped API | History/reports store paths; data is not encrypted at rest; hashes can reveal known files |
-| Integrity | SHA-256, stable/changed-file checks, signed reports, parameterized SQLite | Signature is only trustworthy with the right independent verification key |
+| Confidentiality | Local scans, no content upload, scoped API, encrypted vault payloads, private keys | Paths/catalogue metadata remain plaintext; POSIX AES key is permission-protected; hashes can reveal known files |
+| Integrity | SHA-256, stable-file checks, GCM-authenticated contents/evidence, signed reports, SQLite | Signature needs an independent trusted key; mutable vault state is not an authenticated audit log |
 | Availability | Background work, limits, timeout/error paths, local scan without cloud | No SLA, cluster, sandbox, deployment-wide queue or continuous blocking |
 | Authentication | API Bearer token; report public-key verification | No individual accounts, MFA, expiry or identity certificate |
 | Nonrepudiation | Signed report can support accountable evidence under key custody | Deletable history/local keys are not a complete nonrepudiation system |
@@ -148,7 +151,7 @@ An antivirus project cannot credibly implement every institutional security fram
 | LAN/WAN boundary | Local API port and path scope; firewall policy remains external |
 | WAN | Optional VirusTotal HTTPS dependency and outages |
 | Remote access | Not supplied; explain secure remote administration as a deployment concern |
-| System/application storage | SQLite, rules, reports, API key and signing-key custody |
+| System/application storage | SQLite, rules, reports, encrypted vault and API/signing/vault-key custody |
 
 ### Access-control comparison
 
@@ -170,10 +173,10 @@ For NIST CSF 2.0, use **Govern, Identify, Protect, Detect, Respond, Recover**. T
 |---|---|
 | Govern | Scope, policies, ownership and residual-risk decisions in this guide |
 | Identify | Asset classification and risk register |
-| Protect | Read-only scans, token, folder scope, secrets outside source |
+| Protect | Read-only scans, token, folder scope, encrypted vault contents, secrets outside source |
 | Detect | Local hash/YARA and optional engine findings |
-| Respond | Review findings, retain/export evidence, involve the responsible administrator |
-| Recover | Backup/restore exercise and manual scanning fallback |
+| Respond | Review findings, verified manual quarantine, retain/export evidence, involve the administrator |
+| Recover | Verified no-overwrite restore, retained encrypted backup, private backup drill and manual fallback |
 
 ISO/IEC 27001 would require an organizational ISMS beyond this application; COBIT addresses governance of enterprise IT. A few controls or a framework table cannot establish conformance to either.
 
@@ -193,9 +196,13 @@ flowchart TD
     E --> T["Opt-in HTTPS hash lookup"]
     S --> R["Report and history"]
     R --> K["Signed JSON export"]
+    V --> Q["Explicit quarantine worker"]
+    Q --> I["Verified encrypted isolation"]
+    I --> B["Private payloads and catalogue"]
+    B --> O["No-overwrite restore or deletion"]
 ```
 
-The OS account is trusted to manage the program, rules, databases, keys and settings. Untrusted targets are read as data. The API grants one capability to one scan root. External reputation is optional. A signed export adds report integrity relative to an independently trusted key, not file safety or identity certification.
+The OS account is trusted to manage the program, rules, databases, keys and settings. Untrusted targets are read as data. The API grants one capability to one scan root; it exposes no quarantine actions. External reputation is optional. Quarantine encrypts and verifies a copy before explicit original removal. Its catalogue remains local, and restoring/deleting requires a user decision. A signed export adds report integrity relative to an independently trusted key, not file safety or identity certification.
 
 ## 6. Risk register
 
@@ -210,7 +217,8 @@ Likelihood/impact are qualitative classroom judgments, not measured probabilitie
 | Sensitive filenames in reports | Medium impact, plausible | Local defaults, disclosure, controlled sharing/retention; no redaction UI yet |
 | Cloud reputation outage/quota | Medium impact, likely for bulk lookup | Visible errors, cache/spacing, local-only option |
 | Signing key copied or lost | High evidence impact, plausible | Private-key custody and backup; no hardware store/encrypted key |
-| Incomplete proxy/automatic quarantine | High operational impact | Removed from runtime; no blocking/quarantine claim |
+| Incomplete proxy/automatic removal | High operational impact | Removed from runtime; manual quarantine is explicit, verified and tested; no execution-blocking claim |
+| Vault corruption/key loss or wrong restoration | High recovery impact, plausible | GCM/hash checks, no overwrite, retained encrypted backup; protect complete backups and original Windows account context |
 | Privileged local filesystem manipulation | High impact, lower classroom likelihood | Link/identity checks; same-account/privileged attacker remains outside strong isolation |
 | Lost history/database corruption | Medium impact, plausible | Export on persistence errors; backup/restore exercise |
 
@@ -225,6 +233,7 @@ Use these as project policies to discuss and adapt with the instructor:
 5. Keep a copy of important signed reports and record the public-key fingerprint separately. Share a public key through a trusted channel.
 6. Review dependencies and rules when changes occur. Record the reason for updates and run the regression suite.
 7. Retain history only as long as needed for the exercise; the current UI provides explicit clear-history control. Institutional retention/legal rules need separate determination.
+8. Quarantine only after reviewing detection evidence. Restore only when the risk is understood. Delete vault copy leaves originals/restored files alone; an unconfirmed removal needs investigation or a verified retry.
 
 **Business impact:** losing scanner availability interrupts checks; losing history weakens the evidence trail; losing a private key prevents signing with that identity; leaking the key allows forged evidence. These have different priorities and recovery strategies.
 
@@ -233,12 +242,13 @@ Use these as project policies to discuss and adapt with the instructor:
 **Recovery drill, on a disposable demo installation:**
 
 1. Close the app/API and wait for workers to finish.
-2. Copy `antivirus_data` to an access-controlled backup folder. Include the signing key only in a protected backup; do not add it to a class submission archive.
+2. Copy `antivirus_data` to an access-controlled backup folder. Include the signing key and complete quarantine (catalogue, payloads, vault key) only in a protected backup; never put them in a submission archive. Windows DPAPI recovery also requires the original account/context.
 3. Record a scan count and the signing public-key fingerprint. Preserve one signed report independently.
 4. Rename the active data folder, restore the backup to the original path, and restart the app.
 5. Confirm the recorded history and rerun a clean/demo scan.
 6. Verify the old signed report using the independently retained public key. If the key was compromised, retire it and document a new trusted fingerprint; a new key cannot authenticate old evidence.
 7. Record actual recovery time and whether any records were lost. RTO/RPO targets require the instructor/organization's chosen requirements; the app does not invent them.
+8. On a harmless held sample, verify Quarantine restore and compare its recovered SHA-256. A missing key or damaged payload must fail without overwriting files. Restoring retains an encrypted backup until explicit deletion.
 
 The backup copy is taken with writers stopped. For live database backups, use SQLite's backup mechanism rather than copying an actively written database file.
 
@@ -259,6 +269,8 @@ The backup copy is taken with writers stopped. For live database backups, use SQ
 | 11 | Opt into download monitoring and create a harmless new file | Stabilization, alerting, privacy, no execution blocking |
 | 12 | Refresh the Network page | Visibility versus traffic protection |
 | 13 | Show test summary, risk register and recovery drill | QA, operational security and limitations |
+| 14 | Quarantine a harmless detection, inspect type/severity, restore, delete backup | Confidentiality, integrity, Respond/Recover, explicit decisions |
+| 15 | Recreate a file at the original destination and attempt restore | No overwrite, false-positive recovery and data-loss prevention |
 
 Collect your own screenshots, exported reports, test output, configuration with secrets removed, tamper-verification results and recovery notes. Never submit the private signing key or live API key/token.
 
@@ -273,6 +285,8 @@ Useful defense answers:
 - **Is history nonrepudiable?** No. Local SQLite history is deletable and is not bound to individual identities.
 - **Why no kill-switch?** A process/port/IP alone is insufficient evidence; incorrect termination can interrupt legitimate work.
 - **Do you implement all access-control models?** No. The demo uses OS permissions and an API capability/path policy; other models are explained and identified as future designs.
+- **Does encryption mean the malware cannot run?** Held contents are encrypted and not executed by the app; encryption cannot stop an already running process or a privileged attacker. Restore releases a flagged file.
+- **Can the app tell me exactly which virus it is?** It retains the engine's category/name/severity. Generic or unknown classifications remain generic/unknown; it does not invent certainty.
 
 ## 9. Improvement roadmap
 
@@ -286,11 +300,11 @@ These are recommendations to prioritize against the actual rubric, not claims of
 | Before submission | Verify genuine ClamAV/VT if claiming integrations | Use a maintained daemon/key; record errors/outages and source of results |
 | High if rubric requires it | Individual accounts and RBAC | Viewer/scanner/admin rights enforced in services, not just hidden buttons |
 | High if rubric requires it | MFA and credential lifecycle | Expiry, revocation, secret storage, recovery and distinct identities |
-| High if rubric requires it | Safe quarantine/restore | Content-addressed storage, collision handling, atomic moves, metadata, permissions and explicit decisions |
+| High if rubric requires automation | Automatic isolation policy and rollback | v1.2 supplies manual encrypted quarantine; automation needs thresholds, exclusions, coordination and recovery evidence |
 | High | Maintained signed detection feeds | Verify updates, provenance, rollback and version visibility |
 | High | Native-engine sandbox | Contain malformed-file parser faults and bound each job |
 | High for remote use | Production API + HTTPS + global limits | Production server, worker queue, per-user authorization, TLS, rate limits across processes |
-| High for sensitive evidence | Key protection and report/data encryption | OS credential/hardware store or protected private keys; authenticated encryption with recovery |
+| High for sensitive evidence | Signing-key protection and full recovery tooling | Vault payload encryption and Windows key wrapping exist; signing keys/catalogue metadata and portable recovery need further work |
 | Medium | Append-only authenticated audit trail | Identity/action/time attribution, rotation, external retention and deletion policy |
 | Medium | Labelled evaluation dataset | Precision, recall, false-positive rate, true negative counts; unknown until measured |
 | Medium | Hash/rule catalogue management UI | Validate SHA-256, import provenance, approve updates and show counts/versions |
@@ -306,17 +320,18 @@ These are recommendations to prioritize against the actual rubric, not claims of
 
 ## 10. Visual decisions
 
-Teal near the blue-green part of the color wheel is paired with a complementary orange/coral accent. The dark navy shell gives structure; off-white surfaces keep content readable. Teal carries primary actions, while coral highlights focus and caution. Status text communicates meaning independently of color.
+The reference palette uses analogous green/teal/blue hues. Deep green structures the shell, darker teal holds cards, and slate/soft blue define borders and focus. Derived light text provides readability. A complementary pink accent marks destructive actions; amber distinguishes warnings. Status text communicates meaning independently of color.
 
 | Role | Color |
 |---|---|
-| Navigation | `#142E3F` |
-| Main action | `#0F766E` |
-| Radar highlight | `#5EE4C1` |
-| Coral focus | `#C4775F` |
-| Coral radar accent | `#E6AB93` |
-| Background / cards | `#F1F5F6` / `#FFFFFF` |
-| Main / secondary text | `#173442` / `#516774` |
+| Shell/background | `#031716` |
+| Card surface | `#032F30` |
+| Main action | `#0A7075` |
+| Radar signal | `#0C969C` |
+| Soft-blue accent/focus | `#6BA3BE` |
+| Slate borders | `#274D60` |
+| Derived main / secondary text | `#E6F4F4` / `#A8C8CE` |
+| Derived danger / warning | `#FFB4AB` / `#F0D391` |
 
 Controls have visible focus states. The radar can be still. Pages scroll at smaller sizes. Result rendering is paged. This is visual QA, not a completed WCAG/screen-reader certification. Screenshots render the real widgets with illustrative fixture data.
 
@@ -336,6 +351,10 @@ The suite includes deterministic engine/HTTP boundaries and real offscreen Qt ev
 - [Flask security considerations](https://flask.palletsprojects.com/en/stable/web-security/).
 - [VirusTotal file objects and analysis statistics](https://docs.virustotal.com/reference/files).
 - [Cryptography Ed25519 signing and verification](https://cryptography.io/en/latest/hazmat/primitives/asymmetric/ed25519/).
+- [Cryptography AES-GCM streaming and authenticated additional data](https://cryptography.io/en/48.0.0/hazmat/primitives/symmetric-encryption/).
+- [Microsoft current-account DPAPI protection](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata).
+- [Python filesystem operations and hard links](https://docs.python.org/3.12/library/os.html).
+- [Qt for Python slots and thread affinity](https://doc.qt.io/qtforpython-6/tutorials/basictutorial/signals_and_slots.html).
 - [NIST Cybersecurity Framework 2.0](https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.29.pdf).
 - [Qt Linux runtime requirements](https://doc.qt.io/qt-6/linux-requirements.html).
 - [Official Python slim Bookworm Dockerfile](https://github.com/docker-library/python/blob/master/3.12/slim-bookworm/Dockerfile).
