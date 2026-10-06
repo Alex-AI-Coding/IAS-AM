@@ -82,6 +82,12 @@ Files are never executed. Links and special files are skipped, and file identity
 - Account-bound Windows DPAPI wrapping for the AES vault key; private POSIX directories/key/payloads. Restores verify integrity and never overwrite existing files.
 - Explicit GUI-thread worker receivers and joined native cleanup; foreground scans and quarantine actions cannot start together.
 
+The desktop-controls update adds Ctrl/Shift/Ctrl+A table selection and confirmed
+batch quarantine, restore, retry and deletion with individual outcomes; an
+explicit chooser for internal/USB drives and additional roots; selected-record
+or all-history removal that leaves quarantine intact; and harmless samples that
+can be copied into multiple scan locations. See [the desktop update guide](DESKTOP-UPDATE.md).
+
 The private signing key is local software key material. On POSIX its creation mode is 0600; on Windows the enclosing account/folder ACL determines access. It is unencrypted. A signature proves integrity relative to a trusted key; it does not by itself prove a person's identity, guarantee nonrepudiation, or certify regulatory compliance.
 
 ## 4. IAS course coverage, lesson by lesson
@@ -271,6 +277,9 @@ The backup copy is taken with writers stopped. For live database backups, use SQ
 | 13 | Show test summary, risk register and recovery drill | QA, operational security and limitations |
 | 14 | Quarantine a harmless detection, inspect type/severity, restore, delete backup | Confidentiality, integrity, Respond/Recover, explicit decisions |
 | 15 | Recreate a file at the original destination and attempt restore | No overwrite, false-positive recovery and data-loss prevention |
+| 16 | Ctrl/Shift/Ctrl+A select demo detections, quarantine them, then restore with one conflicting original | Batch usability, eligible scope, per-file failure reporting and preserved user content |
+| 17 | Scan chosen demo folders on E:/F: or a USB drive | Explicit roots, availability, accurate paths and shared traversal limits |
+| 18 | Clear selected history, then clear all including older records | Record lifecycle, precise deletion scope and separation from quarantine evidence |
 
 Collect your own screenshots, exported reports, test output, configuration with secrets removed, tamper-verification results and recovery notes. Never submit the private signing key or live API key/token.
 

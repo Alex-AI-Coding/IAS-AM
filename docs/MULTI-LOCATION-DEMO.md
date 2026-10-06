@@ -40,9 +40,12 @@ created demo folder before trying again.
    ```
 
 3. Choose **Scan → Choose folder** and select one `IAS-AM-Scan-Demo` folder.
-   Folder scans include its nested locations. Scan the other drive's demo folder
-   separately. Quick scan targets the configured common user folders, not every
-   connected drive.
+   Folder scans include its nested locations. To combine selected folders,
+   choose **Scan → Choose drives → Add folder or drive…** and add the demo
+   folders. The same chooser can check complete ready drive roots, including
+   non-C and USB drives. Combined roots share the 25,000-file limit, so select
+   the demo folders for reproducible counts. Quick scan still targets common
+   user folders rather than every connected drive.
 4. With two sets in that folder, expect **12 scanned files: 8 educational YARA
    matches and 4 no-match files** before hash seeding. After seeding, expect
    **10 matches and 2 clean controls**. Counts refer to files, not the number of
@@ -71,3 +74,8 @@ select. It does not execute files, discover other drives, install background
 tasks, or make samples replicate themselves. You can copy these same `.txt`
 files by hand using File Explorer as well. Remove only your generated demo
 folders when finished; keep the repository originals for later testing.
+
+For the exact-hash demonstration, run the helper from the repository whose
+sample was used by `prepare_demo.py`, so both operations use the same bytes.
+Downloads or Git checkout settings can produce different text line endings;
+YARA markers still match, but any byte difference changes an exact SHA-256.

@@ -184,11 +184,32 @@ class ScanRepository:
 
         connection = sqlite3.connect(self.db_path)
         try:
-            count = connection.execute("SELECT COUNT(*) FROM scan_history").fetchone()[
-                0
-            ]
-            connection.execute("DELETE FROM scan_history")
+            removed = connection.execute("DELETE FROM scan_history").rowcount
             connection.commit()
-            return int(count)
+            return int(removed)
+        finally:
+            connection.close()
+
+    def delete_scans(self, record_ids: list[int]) -> int:
+        """Remove selected records by stable IDs in one transaction."""
+        if any(
+            type(record_id) is not int or record_id <= 0 for record_id in record_ids
+        ):
+            raise ValueError("History record IDs must be positive integers.")
+        selected = sorted(set(record_ids))
+        if not selected:
+            return 0
+        connection = sqlite3.connect(self.db_path)
+        try:
+            removed = 0
+            # Keep parameter counts portable across supported SQLite builds.
+            for start in range(0, len(selected), 500):
+                batch = selected[start : start + 500]
+                placeholders = ",".join("?" for _ in batch)
+                removed += connection.execute(
+                    f"DELETE FROM scan_history WHERE id IN ({placeholders})", batch
+                ).rowcount
+            connection.commit()
+            return removed
         finally:
             connection.close()

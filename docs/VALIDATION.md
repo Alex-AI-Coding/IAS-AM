@@ -4,6 +4,8 @@ Original review: October 5, 2026. Quarantine/theme verification: October 6, 2026
 
 The unmodified root project passed **57 tests**; version 1.1 passed **121**. Version 1.2 passed **170 tests, with 1 Windows-only test skipped, in 6.39 seconds** on Linux with Python 3.12.14, PySide6 6.11.2, cryptography 48.0.1 and offscreen Qt. Timing describes this run, not a performance guarantee. `requirements-verified.txt` records the installed dependency versions; `requirements.txt` contains supported installation constraints.
 
+The October 6 desktop-controls update passed **187 tests, with the same Windows-only test skipped, in 11.47 seconds**. Thirteen new tests use actual Qt Ctrl/Shift/Ctrl+A gestures, real educational YARA checks and real encrypted batch quarantine/restore/delete/retry; they cover per-file failures, changed originals, restore conflicts, page-limited selection, stable-ID selected history removal during a new insert, clearing all 105 entries behind a 100-row list, multi-root drive scans, disconnected roots and cancellation. The four sample-helper checks are included. All **71 Python files** pass Black; flake8, compilation and diff checks also pass. The small and normal real-widget layouts were reviewed at 960×640 and 1180×760. See [desktop controls and installation](DESKTOP-UPDATE.md).
+
 ## Completed checks
 
 | Check | Result |

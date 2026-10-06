@@ -10,3 +10,6 @@ class HistoryController:
 
     def clear_history(self):
         return self.repository.clear_history()
+
+    def clear_selected(self, record_ids):
+        return self.repository.delete_scans(record_ids)

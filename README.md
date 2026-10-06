@@ -2,7 +2,7 @@
 
 A desktop file-scanning project for Information Assurance and Security (IAS). It combines a PySide6 interface, exact SHA-256 catalogue matching, educational YARA signatures, optional ClamAV, opt-in VirusTotal hash reputation, encrypted quarantine, reports, local history, a CLI and a restricted Flask API.
 
-![Scan page with radar activity](docs/screenshots/scan-radar.png)
+![Scan page with drive selection and radar](docs/screenshots/scan-radar.png)
 
 **Scope:** this is a classroom scanner. A “No matches” result means that the enabled checks found no known signature; it does not prove a file is safe. The application does not execute files or claim to replace a maintained antivirus. Included demonstration files are harmless text.
 
@@ -32,11 +32,11 @@ Python 3.12+ is required. The desktop app runs independently of Flask and Docker
 | Workspace | Function |
 |---|---|
 | Dashboard | Lifetime scan totals, honest engine availability, empty catalogue notice, recent activity |
-| Scan | File, recursive folder and Quick scan; background worker; progress; native radar; safe cancellation |
-| Results | Status filters, file/detection search, pagination, per-engine details, SHA-256 and durations |
-| Quarantine | Manual encrypted isolation, detection type/severity, verification, restore/restore-as, retry and deletion |
+| Scan | File, recursive folder, selected-drive and Quick scans; background worker; progress; native radar; safe cancellation |
+| Results | Status filters, search, pagination, per-engine evidence, SHA-256, durations and confirmed batch quarantine |
+| Quarantine | Ctrl/Shift/Ctrl+A selection; verified batch isolation, restore, retry and delete; individual restore-as and evidence |
 | Reports | JSON and CSV exports; CSV formula escaping; signed JSON with trusted-key verification |
-| History | SQLite summaries, UTC start/end times, targets, detections, skipped entries and warnings |
+| History | SQLite summaries, UTC times, targets and findings; confirmed clearing of selected entries or all history |
 | Network | Optional on-demand, read-only connection snapshot without packet capture or process termination |
 | Settings | Saved engine preferences, opt-in stable-download monitoring, reduced motion, privacy information |
 | CLI / API | Structured reports, useful CLI exit codes, authenticated and folder-restricted API |
@@ -49,11 +49,13 @@ Every desktop page uses the reference palette: `#031716`, `#032F30`, `#0A7075`, 
 
 ![Quarantine page with illustrative demo evidence](docs/screenshots/quarantine.png)
 
-1. Scan a file or folder. In **Results**, select a detected file with a SHA-256 and choose **Quarantine selected**.
+1. Scan a file, folder or chosen drives. In **Results**, select detected files with a SHA-256 and choose **Quarantine selected**. Ctrl-click selects separate rows, Shift-click selects a range, and Ctrl+A selects the current filtered page after focusing the table. The button counts eligible files; clean/unhashed/already-isolated rows are not included.
 2. Confirm isolation. The worker checks the current file against the scan hash, streams it into an AES-256-GCM encrypted vault, verifies the stored content, and only then removes the original.
 3. Open **Quarantine** to see the type, highest reported severity, state, detection names, original path, size and SHA-256. Select a row; **Details** shows the full evidence. Hover over the filename for its original path.
-4. Choose **Restore original** or **Restore as…** after reviewing the evidence. The service verifies integrity first and never overwrites an existing destination. An encrypted backup remains until you explicitly delete it.
+4. Choose **Restore original** for selected eligible rows, or select one row for **Restore as…** and **Details**. The service verifies integrity first and never overwrites an existing destination. An encrypted backup remains until you explicitly delete it.
 5. **Delete vault copy** removes the encrypted copy and retains the activity record. It leaves original/restored files alone. A failed original removal is labelled **Removal unconfirmed** and offers **Retry isolation**, which reverifies both copies before retrying.
+
+Batch restore, retry and deletion apply only to selected eligible entries. The confirmation states the count and previews paths. Files are processed one at a time; a failed action does not undo completed actions or prevent the remaining files from being tried. **Action summary** lists completed states, attention items and per-file failures. Changing pages or filters clears the selection. Closing waits for any file-changing batch to finish.
 
 The reported type and threat level come from the detecting engines. Unknown classifications stay unknown; educational markers are harmless demonstrations. The app does not infer a specific virus family or a calibrated probability from a generic detection.
 
@@ -77,6 +79,16 @@ Back up the **whole vault with the app closed**, including its catalogue, payloa
 Files larger than **256 MiB** are skipped. Folder discovery stops at **25,000 files** with a visible warning. Links, junctions and special files are skipped. YARA has a **10-second match timeout**. VirusTotal requests have an **8-second network timeout**, a short in-memory cache and a **15-second minimum interval per service instance**. For bulk scans, leave VirusTotal off; quotas from your provider still apply.
 
 An enabled engine failure produces an error or an incomplete-check warning while retaining any detections from other engines. A scan with no working detection engine does not receive a clean verdict. Missing folders, cancelled scans, empty folders and skipped files remain distinguishable.
+
+## Choose drives and manage scan history
+
+Use **Scan → Choose drives** to check one or more ready internal/USB drives, including drives other than C:. No drive is checked automatically. **Add folder or drive…** accepts another explicit root. The chosen roots share the existing 25,000-file discovery bound, and the report identifies inaccessible, disconnected or skipped targets rather than silently substituting another location. Folder scanning also accepts other drives.
+
+In **History**, Ctrl-click or Shift-click selects records, and Ctrl+A selects the visible list of the latest 100 scans. **Clear selected** removes those exact records after confirmation, while **Clear all history** removes every saved scan record, including older entries outside the list. Both update dashboard statistics. Original files, current in-memory results, exported reports and quarantine contents remain. New completed scans will populate History again.
+
+![Drive chooser with illustrative Windows volumes](docs/screenshots/drive-selection.png)
+
+See [the desktop update guide](docs/DESKTOP-UPDATE.md) for installation, GitHub commands and the new workflow checks.
 
 ## Safe classroom demo
 

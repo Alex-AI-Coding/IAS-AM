@@ -9,6 +9,7 @@ import os
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
@@ -117,7 +118,8 @@ class ResultsView(QWidget):
 
         actions = QHBoxLayout()
         instructions = QLabel(
-            "Select a suspicious file to isolate it. Double-click a row for evidence.",
+            "Ctrl-click to choose files, Shift-click for a range, or Ctrl+A for this page. "
+            "Only detected files with a scan hash can be quarantined.",
             self,
         )
         instructions.setProperty("role", "hint")
@@ -137,6 +139,7 @@ class ResultsView(QWidget):
             ["File", "Status", "Threat", "Severity", "Checks completed"]
         )
         configure_table(self.table)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.horizontalHeader().setStretchLastSection(False)
         self.table.setColumnWidth(0, 285)
         self.table.setColumnWidth(1, 110)
@@ -287,28 +290,45 @@ class ResultsView(QWidget):
 
         self._update_quarantine_action()
 
-    def _selected_result(self):
-        row = self.table.currentRow()
-        item = self.table.item(row, 0) if row >= 0 else None
-        return item.data(Qt.ItemDataRole.UserRole) if item else None
+    def _selected_results(self):
+        results = []
+        for index in sorted(
+            self.table.selectionModel().selectedRows(), key=lambda i: i.row()
+        ):
+            item = self.table.item(index.row(), 0)
+            if item and item.data(Qt.ItemDataRole.UserRole) is not None:
+                results.append(item.data(Qt.ItemDataRole.UserRole))
+        return results
+
+    def _eligible_results(self):
+        return [
+            result
+            for result in self._selected_results()
+            if result.is_detected
+            and result.sha256
+            and self._quarantine_key(result.file_path, result.sha256)
+            not in self._isolated
+        ]
 
     def _update_quarantine_action(self):
-        result = self._selected_result()
-        isolated = (
-            result is not None
-            and self._quarantine_key(result.file_path, result.sha256) in self._isolated
+        selected = self._selected_results()
+        eligible = self._eligible_results()
+        isolated = bool(selected) and all(
+            self._quarantine_key(result.file_path, result.sha256) in self._isolated
+            for result in selected
         )
-        self.quarantine_button.setEnabled(
-            bool(
-                result
-                and result.is_detected
-                and result.sha256
-                and not isolated
-                and not self._vault_busy
+        self.quarantine_button.setEnabled(bool(eligible) and not self._vault_busy)
+        self.quarantine_button.setText(
+            "Already isolated"
+            if isolated
+            else (
+                f"Quarantine selected ({len(eligible)})"
+                if eligible
+                else "Quarantine selected"
             )
         )
-        self.quarantine_button.setText(
-            "Already isolated" if isolated else "Quarantine selected"
+        self.quarantine_button.setToolTip(
+            f"{len(eligible)} eligible of {len(selected)} selected files on this page."
         )
 
     def set_vault_busy(self, busy):
@@ -331,9 +351,9 @@ class ResultsView(QWidget):
         )
 
     def _request_quarantine(self):
-        result = self._selected_result()
-        if result and self.quarantine_button.isEnabled():
-            self.quarantine_requested.emit(result)
+        results = self._eligible_results()
+        if results and self.quarantine_button.isEnabled():
+            self.quarantine_requested.emit(results[0] if len(results) == 1 else results)
 
     def _show_details(self, row, _column):
         item = self.table.item(row, 0)

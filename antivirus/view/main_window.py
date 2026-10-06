@@ -161,6 +161,7 @@ class MainWindow(QMainWindow):
             self.scan_controller.scan_directory,
             self.scan_controller.quick_scan,
             self.pages,
+            scan_drives=self.scan_controller.scan_drives,
         )
         self.results_view = ResultsView(self.pages)
         self.quarantine_view = QuarantineView(parent=self.pages)
@@ -224,7 +225,8 @@ class MainWindow(QMainWindow):
                 "Wait for the scan to finish before isolating a file."
             )
             return
-        if self.quarantine_view.quarantine_result(result):
+        results = result if isinstance(result, list) else [result]
+        if self.quarantine_view.quarantine_results(results):
             self.navigation.setCurrentIndex(self.QUARANTINE)
 
     def _navigate(self, row):

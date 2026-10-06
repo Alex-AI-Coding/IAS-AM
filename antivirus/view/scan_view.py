@@ -8,6 +8,7 @@ from threading import Event
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QFileDialog,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -22,6 +23,7 @@ from antivirus.model.scan_report import ScanReport
 from antivirus.model.scan_result import ScanResult
 from antivirus.view.components import Card, page_header, section_title
 from antivirus.view.radar import ScanRadar
+from antivirus.view.drive_dialog import DriveSelectionDialog
 
 
 class ScanWorker(QObject):
@@ -113,11 +115,14 @@ class ScanView(QWidget):
         scan_directory: Callable[[str], ScanReport] | None = None,
         quick_scan: Callable[[], ScanReport] | None = None,
         parent=None,
+        *,
+        scan_drives: Callable[[list[str]], ScanReport] | None = None,
     ):
         super().__init__(parent)
         self._scan_file = scan_file
         self._scan_directory = scan_directory
         self._quick_scan = quick_scan
+        self._scan_drives = scan_drives
         self._thread = None
         self._worker = None
         self._pending_result = None
@@ -137,7 +142,7 @@ class ScanView(QWidget):
         self.quick_choice = ScanChoice(
             "Q",
             "Quick scan",
-            "Checks Desktop, Downloads, and Documents—the places new files commonly appear.",
+            "Checks Desktop, Downloads, and Documents.",
             "Start quick scan",
             self,
         )
@@ -155,14 +160,29 @@ class ScanView(QWidget):
             "Choose folder",
             self,
         )
+        self.drive_choice = ScanChoice(
+            "S",
+            "Scan drives",
+            "Choose internal or USB drives, including D:, E:, or F:.",
+            "Choose drives",
+            self,
+        )
         self.quick_scan_button = self.quick_choice.button
         self.select_file_button = self.file_choice.button
         self.select_folder_button = self.folder_choice.button
+        self.select_drives_button = self.drive_choice.button
+        self.select_drives_button.setEnabled(self._scan_drives is not None)
         self.quick_scan_button.setProperty("variant", "primary")
         self.quick_scan_button.clicked.connect(self.start_quick_scan)
         self.select_file_button.clicked.connect(self._select_file)
         self.select_folder_button.clicked.connect(self._select_folder)
-        for choice in (self.quick_choice, self.file_choice, self.folder_choice):
+        self.select_drives_button.clicked.connect(self._select_drives)
+        for choice in (
+            self.quick_choice,
+            self.file_choice,
+            self.folder_choice,
+            self.drive_choice,
+        ):
             choices.addWidget(choice, 1)
         layout.addLayout(choices)
 
@@ -266,7 +286,10 @@ class ScanView(QWidget):
         self.progress.setRange(0, 0)
         self.radar.set_state("scanning")
         self.scan_started.emit()
-        self.status_label.setText(f"Preparing to scan {path or 'common folders'}…")
+        target_label = (
+            ", ".join(path) if isinstance(path, list) else (path or "common folders")
+        )
+        self.status_label.setText(f"Preparing to scan {target_label}…")
         self._worker.progress.connect(self._scan_progress)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
@@ -374,6 +397,19 @@ class ScanView(QWidget):
         self.select_file_button.setEnabled(enabled)
         self.select_folder_button.setEnabled(enabled)
         self.quick_scan_button.setEnabled(enabled)
+        self.select_drives_button.setEnabled(enabled and self._scan_drives is not None)
+
+    def _select_drives(self):
+        if self._scan_drives is None or self.is_scanning() or not self.isEnabled():
+            return
+        dialog = DriveSelectionDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        paths = dialog.selected_paths()
+        if paths:
+            self._start_scan(
+                self._scan_drives, paths, "Drive scan", supports_progress=True
+            )
 
     def is_scanning(self) -> bool:
         return self._thread is not None

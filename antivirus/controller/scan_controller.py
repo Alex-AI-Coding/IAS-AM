@@ -71,6 +71,21 @@ class ScanController:
         )
         return report
 
+    def scan_drives(
+        self, roots: list[str], progress_callback=None, cancel_check=None
+    ) -> ScanReport:
+        """Scan only the explicitly chosen roots, sharing traversal and size limits."""
+        started = monotonic()
+        report = self.scanner.scan_directories(roots, progress_callback, cancel_check)
+        self._record_report(
+            report,
+            ", ".join(roots),
+            "drives",
+            monotonic() - started,
+            "cancelled" if report.cancelled else None,
+        )
+        return report
+
     @staticmethod
     def _as_report(result: ScanResult) -> ScanReport:
         report = ScanReport()

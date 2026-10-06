@@ -6,7 +6,7 @@ Version 1.2, October 6, 2026. Update baseline: `135a69b3f53bfe758570daea0b4d96ea
 
 | Feature | Behavior |
 |---|---|
-| Quarantine selected | Explicit user-confirmed isolation from a detected Results row |
+| Quarantine selected | Explicit user-confirmed isolation from selected eligible Results rows |
 | Encrypted storage | AES-256-GCM with a random nonce and random payload ID |
 | Verified original removal | Current bytes must match the scan's SHA-256; the encrypted copy must verify before unlinking |
 | Threat details | Engine-provided categories, names, reported severity, source and explanation |
@@ -34,6 +34,28 @@ The existing Dashboard, file/folder/Quick scan, radar/reduced motion, search/fil
 7. To demonstrate no-overwrite behavior, quarantine a fresh harmless copy, recreate a different file at its original path, then attempt Restore original. The newer file must survive. Use Restore as to choose another name.
 
 These examples show file-handling controls. They do not measure malware-detection accuracy or prove that every detection is a true infection. Quarantine is manual; the download monitor continues to alert only.
+
+## Select and process several files
+
+In Results and Quarantine, click a row to focus the table. **Ctrl-click** selects
+separate rows, **Shift-click** selects a range, and **Ctrl+A** selects the current
+filtered page (up to 250 Results rows or 200 Quarantine rows). Selection clears
+when changing the filter or page. Action buttons show the number of eligible
+selected files. Results excludes clean/unhashed/already-isolated entries.
+
+Batch quarantine, Restore original, Retry isolation and Delete vault copies use
+one confirmation and one background worker. The worker processes each selected
+eligible file separately; a failure is reported while later files continue.
+Completed actions are not rolled back. **Action summary → Show Details** lists
+each returned state, attention message and failure. Existing-file conflicts and
+changed originals retain the same protection as individual operations.
+**Restore as…** and **Details** require exactly one selected row. App close waits
+for the running file-changing batch to finish.
+
+History has separate **Clear selected** and **Clear all history** actions with
+confirmation. They delete scan records and refresh dashboard totals; they leave
+the vault and its activity catalogue intact. Clear all includes entries older
+than the latest 100 visible rows. New completed scans are saved normally.
 
 ## States and user choices
 
