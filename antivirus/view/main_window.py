@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QHBoxLayout,
     QLabel,
@@ -28,6 +29,7 @@ from antivirus.view.scan_view import ScanView
 from antivirus.view.settings_view import SettingsView
 from antivirus.view.network_tab import NetworkMonitorTab
 from antivirus.view.quarantine_view import QuarantineView
+from antivirus.view.theme import apply_theme
 from antivirus.services.download_watcher import DownloadWatcherService
 from antivirus.services.scanner import Scanner
 from antivirus.detection.detection_engine import DetectionEngine
@@ -141,11 +143,19 @@ class MainWindow(QMainWindow):
         brand_text.addWidget(brand_title)
         brand_text.addWidget(brand_subtitle)
 
+        self.theme_button = QPushButton(top_bar)
+        self.theme_button.setProperty("themeToggle", True)
+        self.theme_button.setCheckable(True)
+        self.theme_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.theme_button.toggled.connect(self._set_theme)
+        self._update_theme_button()
+
         self.navigation = TopNavigation(self.PAGE_NAMES, top_bar)
         self.navigation.setObjectName("TopNavigation")
 
         branding.addWidget(mark)
         branding.addLayout(brand_text)
+        branding.addWidget(self.theme_button)
         branding.addStretch()
         workspace_label = QLabel("Local scanning · Private quarantine", top_bar)
         workspace_label.setProperty("role", "brandSubtitle")
@@ -214,6 +224,28 @@ class MainWindow(QMainWindow):
         self.results_view.quarantine_requested.connect(self._quarantine_result)
         self.quarantine_view.item_changed.connect(self.results_view.quarantine_changed)
         self.quarantine_view.busy_changed.connect(self._vault_busy_changed)
+
+    def _set_theme(self, light_mode: bool) -> None:
+        """Switch palettes without changing the user's current workspace."""
+
+        application = QApplication.instance()
+        if application is None:
+            return
+        apply_theme(application, "light" if light_mode else "dark")
+        self._update_theme_button()
+        self.centralWidget().update()
+
+    def _update_theme_button(self) -> None:
+        """Keep the compact brand control clear to sighted and screen-reader users."""
+
+        if self.theme_button.isChecked():
+            self.theme_button.setText("☀")
+            self.theme_button.setAccessibleName("Light mode is active")
+            self.theme_button.setToolTip("Light mode — click for dark mode")
+        else:
+            self.theme_button.setText("◐")
+            self.theme_button.setAccessibleName("Dark mode is active")
+            self.theme_button.setToolTip("Dark mode — click for light mode")
 
     def _vault_busy_changed(self, busy):
         self.results_view.set_vault_busy(busy or self.scan_view.is_scanning())
