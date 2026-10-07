@@ -1,28 +1,58 @@
-"""Ocean palette from the user's reference, shared by every widget and status."""
+"""Application palettes and shared Qt styling."""
 
 from string import Template
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import QApplication
 
-COLORS = {
-    "background": "#031716",
-    "surface": "#032F30",
-    "surface_alt": "#0A3D40",
-    "nav": "#031716",
-    "primary": "#0A7075",
-    "signal": "#0C969C",
-    "accent": "#6BA3BE",
-    "border": "#274D60",
-    "text": "#E6F4F4",
-    "muted": "#A8C8CE",
-    "disabled": "#708E96",
-    "highlight": "#89DDE0",
-    "danger": "#FFB4AB",
-    "danger_bg": "#472E33",
-    "warning": "#F0D391",
-    "warning_bg": "#3D3828",
+DARK_COLORS = {
+    "background": "#000000",
+    "surface": "#111111",
+    "surface_alt": "#1C1C1C",
+    "nav": "#000000",
+    "primary": "#FF6600",
+    "signal": "#FF7A24",
+    "accent": "#5B7C99",
+    "border": "#3E566C",
+    "text": "#FFFFFF",
+    "muted": "#B6C5D1",
+    "disabled": "#718395",
+    "highlight": "#FF9A5C",
+    "danger": "#FF9A8F",
+    "danger_bg": "#3B2020",
+    "warning": "#FFB16A",
+    "warning_bg": "#3D2A1A",
     "white": "#FFFFFF",
 }
+
+LIGHT_COLORS = {
+    "background": "#CFE8EF",
+    "surface": "#FFFFFF",
+    "surface_alt": "#EAF5F7",
+    "nav": "#CFE8EF",
+    "primary": "#5B7C99",
+    "signal": "#FF8C42",
+    "accent": "#5B7C99",
+    "border": "#9AB8CA",
+    "text": "#172B3A",
+    "muted": "#4E6A80",
+    "disabled": "#8299AA",
+    "highlight": "#D85F16",
+    "danger": "#B42318",
+    "danger_bg": "#FDECEC",
+    "warning": "#8A5A00",
+    "warning_bg": "#FFF0DF",
+    "white": "#FFFFFF",
+}
+
+# Keep this dictionary object stable: painter-based widgets import it directly.
+COLORS = DARK_COLORS.copy()
+_current_mode = "dark"
+
+
+def current_theme_mode() -> str:
+    """Return the active application color mode."""
+
+    return _current_mode
 
 
 def status_color(status):
@@ -37,7 +67,15 @@ def status_color(status):
     ]
 
 
-def apply_theme(application: QApplication) -> None:
+def apply_theme(application: QApplication, mode: str = "dark") -> None:
+    """Apply the requested palette to the entire application."""
+
+    global _current_mode
+    if mode not in {"dark", "light"}:
+        raise ValueError(f"Unknown theme mode: {mode}")
+    _current_mode = mode
+    COLORS.clear()
+    COLORS.update(LIGHT_COLORS if mode == "light" else DARK_COLORS)
     application.setStyle("Fusion")
     font = QFont("Segoe UI")
     font.setPointSizeF(11.0)
@@ -70,7 +108,7 @@ def apply_theme(application: QApplication) -> None:
     ):
         palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(COLORS["disabled"]))
     application.setPalette(palette)
-    application.setStyleSheet(STYLESHEET)
+    application.setStyleSheet(STYLESHEET.substitute(COLORS))
 
 
 STYLESHEET = Template("""
@@ -79,7 +117,7 @@ QMainWindow, QWidget#AppRoot, QStackedWidget#PageStack {
 }
 QWidget#TopBar { background: $nav; border-bottom: 1px solid $border; }
 QLabel { color: $text; }
-QLabel[role="brandTitle"] { color: $white; font-size: 18px; font-weight: 700; }
+QLabel[role="brandTitle"] { color: $text; font-size: 18px; font-weight: 700; }
 QLabel[role="brandSubtitle"] { color: $accent; font-size: 10pt; }
 QLabel[role="pageTitle"] { color: $text; font-size: 25px; font-weight: 700; }
 QLabel[role="pageSubtitle"] { color: $muted; font-size: 11pt; }
@@ -133,6 +171,13 @@ QPushButton[toggle="true"] {
     border: 1px solid $border; border-radius: 18px; background: $surface_alt;
     color: $muted; font-size: 10pt; font-weight: 700;
 }
+QPushButton[themeToggle="true"] {
+    min-width: 40px; max-width: 40px; min-height: 36px; max-height: 36px; padding: 0;
+    border: 1px solid $border; border-radius: 18px; background: $surface_alt;
+    color: $text; font-size: 17px; font-weight: 700;
+}
+QPushButton[themeToggle="true"]:hover { border-color: $signal; background: $surface; }
+QPushButton[themeToggle="true"]:focus { border: 2px solid $accent; }
 QPushButton[toggle="true"]:hover { border-color: $signal; }
 QPushButton[toggle="true"]:checked { background: $primary; border-color: $signal; color: $white; }
 QLabel[status="active"], QLabel[status="inactive"], QLabel[status="warning"], QLabel[status="danger"] {
@@ -179,4 +224,4 @@ QToolTip { background: $surface; color: $text; border: 1px solid $accent; paddin
 QPushButton:focus, QComboBox:focus, QLineEdit:focus { border: 2px solid $accent; }
 QStatusBar { background: $nav; color: $muted; padding: 4px 10px; }
 QScrollArea { background: transparent; border: 0; }
-""").substitute(COLORS)
+""")
