@@ -103,7 +103,7 @@ class SettingsView(QWidget):
         (
             "reduced_motion",
             "Reduce animation",
-            "Keeps the scan radar still while preserving progress and status updates.",
+            "Stops scan radar and progress-bar motion while preserving progress and status updates.",
             False,
         ),
     )

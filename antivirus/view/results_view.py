@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -79,11 +80,17 @@ class ResultsView(QWidget):
         self.total_card = MetricCard("F", "Files checked")
         self.clean_card = MetricCard("✓", "No matches")
         self.threat_card = MetricCard("!", "Suspicious files")
+        self.high_risk_card = MetricCard("!", "High-risk files")
+        self.high_risk_card.setToolTip(
+            "Files with at least one engine-reported High or Critical severity. "
+            "Severity is an engine assessment, not a guarantee of impact."
+        )
         self.error_card = MetricCard("E", "Incomplete / skipped")
         for card in (
             self.total_card,
             self.clean_card,
             self.threat_card,
+            self.high_risk_card,
             self.error_card,
         ):
             metrics.addWidget(card, 1)
@@ -104,11 +111,21 @@ class ResultsView(QWidget):
                 "Skipped only",
             ]
         )
+        self.filter_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
+        self.filter_combo.setMinimumWidth(
+            max(180, self.filter_combo.sizeHint().width())
+        )
         self.filter_combo.currentIndexChanged.connect(self._reset_page)
         self.search_box = QLineEdit(self.results_toolbar)
-        self.search_box.setPlaceholderText("Find file or detection…")
+        self.search_box.setPlaceholderText("Search file path or threat name…")
         self.search_box.setAccessibleName("Search scan results")
-        self.search_box.setMaximumWidth(230)
+        self.search_box.setMinimumWidth(340)
+        self.search_box.setMaximumWidth(390)
+        self.search_box.setToolTip(
+            "Search scan results by file path or detected threat name."
+        )
         self.search_box.textChanged.connect(self._reset_page)
         toolbar.addWidget(self.summary, 1)
         toolbar.addWidget(self.search_box)
@@ -141,13 +158,17 @@ class ResultsView(QWidget):
         )
         configure_table(self.table)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.table.horizontalHeader().setStretchLastSection(False)
-        self.table.setColumnWidth(0, 285)
+        header = self.table.horizontalHeader()
+        header.setStretchLastSection(False)
+        for column in (0, 2):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
+        for column in (1, 3, 4):
+            header.setSectionResizeMode(
+                column, QHeaderView.ResizeMode.ResizeToContents
+            )
+        self.table.setColumnWidth(0, 360)
         self.table.setColumnWidth(1, 110)
-        self.table.setColumnWidth(2, 220)
-        self.table.setColumnWidth(3, 85)
-        self.table.setColumnWidth(4, 120)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setColumnWidth(2, 300)
         self.table.cellDoubleClicked.connect(self._show_details)
         self.table.itemSelectionChanged.connect(self._update_quarantine_action)
         self.table.hide()
@@ -183,6 +204,7 @@ class ResultsView(QWidget):
     def _change_page(self, difference):
         self._page_index = max(0, self._page_index + difference)
         self._render_rows()
+        self.table.scrollToTop()
 
     def show_report(self, report):
         self.report = report
@@ -191,16 +213,26 @@ class ResultsView(QWidget):
         self.total_card.set_value(report.total_files)
         self.clean_card.set_value(report.clean_files)
         self.threat_card.set_value(report.threat_files)
+        self.high_risk_card.set_value(report.high_risk_files)
         self.error_card.set_value(report.incomplete_files)
         self.summary.setText(
-            f"{report.total_files} file{'s' if report.total_files != 1 else ''} checked · "
-            f"{report.threats_found} detection{'s' if report.threats_found != 1 else ''} · {report.outcome.title()}"
-            + (" · " + report.warnings[0][:160] if report.warnings else "")
+            f"{report.total_files} files checked · {report.clean_files} with no matches · "
+            f"{report.threat_files} suspicious · {report.threats_found} detection matches · "
+            f"{report.high_risk_files} high-risk · "
+            f"{report.incomplete_files} incomplete or skipped · {report.outcome.title()}"
         )
         self.summary.setWordWrap(True)
         self.summary.setTextFormat(Qt.TextFormat.PlainText)
         self.summary.setToolTip(
-            "No matches means the enabled engines found no known pattern. It is not a guarantee that a file is safe."
+            "No matches means the enabled engines found no known pattern; it is not a guarantee that a file is safe.\n\n"
+            f"Scan duration: {report.duration:.3f} seconds\n"
+            f"Started: {report.started_at or 'Unavailable'}\n"
+            f"Completed: {report.completed_at or 'Unavailable'}\n\n"
+            + (
+                "Scan warnings:\n" + "\n".join(report.warnings)
+                if report.warnings
+                else "No scan warnings."
+            )
         )
         self.export_json_button.setEnabled(True)
         self.export_csv_button.setEnabled(True)
@@ -371,13 +403,21 @@ class ResultsView(QWidget):
             "\n".join(f"{key}: {value}" for key, value in result.engine_results.items())
             or "No engine details"
         )
+        methods_text = ", ".join(result.detection_methods) or "None reported"
+        checked_text = ", ".join(result.checked_engines) or "None reported"
+        warning_text = "\n".join(result.warnings) or "None"
         dialog = QMessageBox(self)
         dialog.setWindowTitle("Scan details")
         dialog.setTextFormat(Qt.TextFormat.PlainText)
         dialog.setText(
             f"File\n{result.file_path}\n\nStatus\n{result.status.value.title()}\n\n"
             f"SHA-256\n{result.sha256 or 'Unavailable'}\n\nDetections\n{threat_text}\n\n"
-            f"Engine outcomes\n{engine_text}"
+            f"Checks completed\n{checked_text}\n\nDetection methods\n{methods_text}\n\n"
+            f"Engine outcomes\n{engine_text}\n\n"
+            f"Scan duration\n{result.scan_duration:.3f} seconds\n\n"
+            f"Started\n{result.started_at or 'Unavailable'}\n\n"
+            f"Completed\n{result.completed_at or 'Unavailable'}\n\n"
+            f"Warnings\n{warning_text}"
             + (f"\n\nNote\n{result.error_message}" if result.error_message else ""),
         )
         dialog.exec()
@@ -427,6 +467,7 @@ class ResultsDialog(QDialog):
         )
         self.setMinimumSize(960, 650)
         self.resize(1100, 760)
+        self.setWindowState(Qt.WindowState.WindowMaximized)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

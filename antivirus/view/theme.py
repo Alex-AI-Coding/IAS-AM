@@ -1,8 +1,13 @@
 """Application palettes and shared Qt styling."""
 
 from string import Template
+from PySide6.QtCore import QEvent, QObject
 from PySide6.QtGui import QColor, QFont, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import (
+    QApplication,
+    QGraphicsDropShadowEffect,
+    QPushButton,
+)
 
 DARK_COLORS = {
     "background": "#000000",
@@ -17,30 +22,34 @@ DARK_COLORS = {
     "muted": "#B6C5D1",
     "disabled": "#718395",
     "highlight": "#FF9A5C",
+    "signal_text": "#000000",
     "danger": "#FF9A8F",
     "danger_bg": "#3B2020",
+    "danger_text": "#000000",
     "warning": "#FFB16A",
     "warning_bg": "#3D2A1A",
     "white": "#FFFFFF",
 }
 
 LIGHT_COLORS = {
-    "background": "#CFE8EF",
-    "surface": "#FFFFFF",
-    "surface_alt": "#EAF5F7",
-    "nav": "#CFE8EF",
+    "background": "#E4E9ED",
+    "surface": "#F3F5F6",
+    "surface_alt": "#DDE4E9",
+    "nav": "#E1E7EB",
     "primary": "#5B7C99",
-    "signal": "#FF8C42",
+    "signal": "#D97832",
     "accent": "#5B7C99",
-    "border": "#9AB8CA",
+    "border": "#A7B5BF",
     "text": "#172B3A",
-    "muted": "#4E6A80",
+    "muted": "#526575",
     "disabled": "#8299AA",
     "highlight": "#D85F16",
+    "signal_text": "#172B3A",
     "danger": "#B42318",
-    "danger_bg": "#FDECEC",
+    "danger_bg": "#F2E2E1",
+    "danger_text": "#FFFFFF",
     "warning": "#8A5A00",
-    "warning_bg": "#FFF0DF",
+    "warning_bg": "#F0E7D9",
     "white": "#FFFFFF",
 }
 
@@ -65,6 +74,35 @@ def status_color(status):
             "cancelled": "accent",
         }.get(status, "muted")
     ]
+
+
+class ButtonHoverEffects(QObject):
+    """Add a theme-aware glow to buttons while hovered."""
+
+    def eventFilter(self, watched, event):
+        if isinstance(watched, QPushButton):
+            if event.type() == QEvent.Type.Enter and watched.isEnabled():
+                self._start(watched)
+            elif event.type() == QEvent.Type.Leave:
+                self._stop(watched)
+        return False
+
+    def _start(self, button):
+        effect = button.graphicsEffect()
+        if not isinstance(effect, QGraphicsDropShadowEffect):
+            effect = QGraphicsDropShadowEffect(button)
+            effect.setOffset(0, 0)
+            button.setGraphicsEffect(effect)
+
+        effect.setColor(QColor(COLORS["highlight"]))
+        effect.setBlurRadius(24)
+        effect.setEnabled(True)
+
+    @staticmethod
+    def _stop(button):
+        effect = button.graphicsEffect()
+        if isinstance(effect, QGraphicsDropShadowEffect):
+            effect.setEnabled(False)
 
 
 def apply_theme(application: QApplication, mode: str = "dark") -> None:
@@ -109,6 +147,9 @@ def apply_theme(application: QApplication, mode: str = "dark") -> None:
         palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(COLORS["disabled"]))
     application.setPalette(palette)
     application.setStyleSheet(STYLESHEET.substitute(COLORS))
+    if application.findChild(ButtonHoverEffects) is None:
+        hover_effects = ButtonHoverEffects(application)
+        application.installEventFilter(hover_effects)
 
 
 STYLESHEET = Template("""
@@ -143,6 +184,8 @@ QLabel[role="heroIcon"] {
 }
 QLabel[role="heroTitle"] { color: $highlight; font-size: 18px; font-weight: 700; }
 QLabel[role="heroText"] { color: $muted; font-size: 10.5pt; }
+QLabel[role="loadingText"] { color: $highlight; font-size: 11pt; font-weight: 700; }
+QLabel[role="panicText"] { color: $danger; font-size: 10pt; font-weight: 700; }
 QPushButton {
     min-height: 42px; padding: 0 17px; border: 1px solid $border; border-radius: 9px;
     background: $surface_alt; color: $text; font-size: 10.5pt; font-weight: 600;
@@ -151,10 +194,10 @@ QPushButton:hover { background: $border; border-color: $accent; }
 QPushButton:pressed { background: $primary; }
 QPushButton:disabled { background: $surface; color: $disabled; border-color: $border; }
 QPushButton[variant="primary"] { background: $primary; border-color: $primary; color: $white; }
-QPushButton[variant="primary"]:hover { background: $signal; color: $background; border-color: $signal; }
+QPushButton[variant="primary"]:hover { background: $signal; color: $signal_text; border-color: $signal; }
 QPushButton[variant="primary"]:disabled { background: $surface_alt; color: $disabled; border-color: $border; }
 QPushButton[variant="danger"] { background: $danger_bg; border-color: $danger; color: $danger; }
-QPushButton[variant="danger"]:hover { background: $danger; color: $background; }
+QPushButton[variant="danger"]:hover { background: $danger; color: $danger_text; }
 QPushButton[variant="danger"]:disabled { background: $surface; color: $disabled; border-color: $border; }
 QPushButton[variant="ghost"] { background: transparent; border-color: transparent; color: $accent; }
 QPushButton[compact="true"] { min-height: 34px; padding: 0 12px; border-radius: 7px; font-size: 10pt; }
@@ -164,7 +207,7 @@ QPushButton[nav="true"] {
     border: 1px solid transparent; border-radius: 9px; background: transparent;
     color: $muted; font-size: 10.5pt; font-weight: 600;
 }
-QPushButton[nav="true"]:hover { background: $surface_alt; color: $white; }
+QPushButton[nav="true"]:hover { background: $surface_alt; color: $text; }
 QPushButton[nav="true"]:checked { background: $primary; color: $white; }
 QPushButton[toggle="true"] {
     min-width: 76px; max-width: 76px; min-height: 36px; max-height: 36px; padding: 0;
@@ -199,12 +242,30 @@ QHeaderView::section {
 }
 QTableCornerButton::section { background: $border; border: 0; }
 QProgressBar {
-    min-height: 11px; max-height: 11px; border: 0; border-radius: 5px; background: $border; text-align: center;
+    min-height: 16px; max-height: 16px; border: 1px solid $border;
+    border-radius: 8px; background: $surface_alt; text-align: center;
 }
-QProgressBar::chunk { background: $signal; border-radius: 5px; }
+QProgressBar::chunk {
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 0,
+        stop: 0 $primary, stop: 1 $signal
+    );
+    border-radius: 7px;
+}
 QComboBox, QLineEdit, QTextEdit, QPlainTextEdit {
     min-height: 40px; padding: 0 12px; background: $surface; border: 1px solid $border;
     border-radius: 8px; color: $text; selection-background-color: $primary; font-size: 10.5pt;
+}
+QComboBox { padding-right: 32px; }
+QComboBox::drop-down {
+    subcontrol-origin: padding; subcontrol-position: top right; width: 28px;
+    border-left: 1px solid $border; border-top-right-radius: 7px;
+    border-bottom-right-radius: 7px;
+}
+QComboBox::down-arrow {
+    image: none; width: 0; height: 0;
+    border-left: 5px solid transparent; border-right: 5px solid transparent;
+    border-top: 6px solid $muted;
 }
 QComboBox:hover, QLineEdit:hover { border-color: $signal; }
 QComboBox QAbstractItemView, QMenu {

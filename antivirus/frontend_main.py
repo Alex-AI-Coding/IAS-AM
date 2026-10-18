@@ -29,7 +29,7 @@ def main() -> int:
             "Application data could not be opened. Check folder permissions and available disk space, then try again.",
         )
         return 1
-    window.show()
+    window.showMaximized()
     return application.exec()
 
 

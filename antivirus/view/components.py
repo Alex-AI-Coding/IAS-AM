@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QSizePolicy,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTableWidget,
     QVBoxLayout,
     QWidget,
@@ -113,6 +115,14 @@ def status_pill(text: str, status: str = "inactive") -> QLabel:
     return label
 
 
+class CenteredTableItemDelegate(QStyledItemDelegate):
+    def initStyleOption(
+        self, option: QStyleOptionViewItem, index: QModelIndex
+    ) -> None:
+        super().initStyleOption(option, index)
+        option.displayAlignment = Qt.AlignmentFlag.AlignCenter
+
+
 def configure_table(table: QTableWidget) -> None:
     table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
     table.setWordWrap(False)
@@ -124,7 +134,13 @@ def configure_table(table: QTableWidget) -> None:
     table.verticalHeader().setVisible(False)
     table.verticalHeader().setDefaultSectionSize(58)
     table.horizontalHeader().setHighlightSections(False)
+    table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+    table.setItemDelegate(CenteredTableItemDelegate(table))
     table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+    for column in range(table.columnCount()):
+        header_item = table.horizontalHeaderItem(column)
+        if header_item is not None:
+            header_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
 
 def display_datetime(value: str) -> str:

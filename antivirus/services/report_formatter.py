@@ -26,6 +26,8 @@ class ReportFormatter:
                 "total_files": report.total_files,
                 "clean_files": report.clean_files,
                 "threat_files": report.threat_files,
+                "threats_found": report.threats_found,
+                "high_risk_files": report.high_risk_files,
                 "error_files": report.error_files,
                 "skipped_files": report.skipped_files,
                 "incomplete_files": report.incomplete_files,
@@ -84,6 +86,24 @@ class ReportFormatter:
                 "Error Message",
                 "Engine Results",
                 "Scan Outcome",
+                "Scan Duration (seconds)",
+                "File Scan Started At",
+                "File Scan Completed At",
+                "File Warnings",
+                "Record Type",
+                "Files Checked",
+                "No-match Files",
+                "Suspicious Files",
+                "Detection Matches",
+                "High-risk Files",
+                "Error Files",
+                "Skipped Files",
+                "Incomplete Files",
+                "Scan Cancelled",
+                "Report Duration (seconds)",
+                "Report Started At",
+                "Report Completed At",
+                "Report Warnings",
             ]
         )
         for result in report.results:
@@ -106,27 +126,61 @@ class ReportFormatter:
                                 for key, value in result.engine_results.items()
                             ),
                             report.outcome,
+                            result.scan_duration,
+                            result.started_at,
+                            result.completed_at,
+                            "; ".join(result.warnings),
+                            "file",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
                         ]
                     ]
                 )
-        # Keep incomplete/empty scan context even when there are no result rows.
-        if report.warnings or report.cancelled or not report.results:
-            writer.writerow(
-                [
-                    csv_cell(value)
-                    for value in [
-                        "",
-                        "summary",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "; ".join(report.warnings),
-                        "",
-                        report.outcome,
-                    ]
+        writer.writerow(
+            [
+                csv_cell(value)
+                for value in [
+                    "Scan summary",
+                    report.outcome,
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "; ".join(report.warnings),
+                    "",
+                    report.outcome,
+                    "",
+                    "",
+                    "",
+                    "",
+                    "summary",
+                    report.total_files,
+                    report.clean_files,
+                    report.threat_files,
+                    report.threats_found,
+                    report.high_risk_files,
+                    report.error_files,
+                    report.skipped_files,
+                    report.incomplete_files,
+                    report.cancelled,
+                    report.duration,
+                    report.started_at,
+                    report.completed_at,
+                    "; ".join(report.warnings),
                 ]
-            )
+            ]
+        )
         return output.getvalue()

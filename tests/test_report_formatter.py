@@ -22,6 +22,8 @@ def test_report_formatter_to_json():
     assert "results" in data
     assert data["summary"]["total_files"] == 1
     assert data["summary"]["clean_files"] == 1
+    assert data["summary"]["threats_found"] == 0
+    assert data["summary"]["high_risk_files"] == 0
     assert len(data["results"]) == 1
 
 
@@ -50,6 +52,11 @@ def test_report_formatter_to_csv():
     assert rows[0][0] == "File Path"
     assert any("malware.exe" in row for row in rows)
     assert any("Test.Malware" in row for row in rows)
+    assert any("summary" in row for row in rows)
+    assert "High-risk Files" in rows[0]
+    assert "Detection Matches" in rows[0]
+    assert any("1" == row[rows[0].index("High-risk Files")] for row in rows[1:])
+    assert all(len(row) == len(rows[0]) for row in rows)
 
 
 def test_report_formatter_to_dict():

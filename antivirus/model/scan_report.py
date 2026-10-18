@@ -37,6 +37,17 @@ class ScanReport:
         return sum(len(result.threats) for result in self.results)
 
     @property
+    def high_risk_files(self) -> int:
+        """Count files with at least one engine-reported High or Critical finding."""
+        return sum(
+            any(
+                str(threat.severity or "").strip().casefold() in {"high", "critical"}
+                for threat in result.threats
+            )
+            for result in self.results
+        )
+
+    @property
     def incomplete_files(self) -> int:
         return (
             self.error_files
@@ -120,12 +131,16 @@ class ScanReport:
         report.clean_files = int(summary.get("clean_files", report.clean_files) or 0)
         report.threat_files = int(summary.get("threat_files", report.threat_files) or 0)
         report.error_files = int(summary.get("error_files", report.error_files) or 0)
-        report.skipped_files = int(summary.get("skipped_files", report.skipped_files) or 0)
+        report.skipped_files = int(
+            summary.get("skipped_files", report.skipped_files) or 0
+        )
         report.cancelled = bool(summary.get("cancelled", False))
         report.duration = float(summary.get("duration_seconds", report.duration) or 0)
         report.warnings = list(summary.get("warnings", report.warnings) or [])
         report.started_at = str(summary.get("started_at", report.started_at) or "")
-        report.completed_at = str(summary.get("completed_at", report.completed_at) or "")
+        report.completed_at = str(
+            summary.get("completed_at", report.completed_at) or ""
+        )
         return report
 
     @classmethod

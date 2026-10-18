@@ -245,6 +245,7 @@ class MainWindow(QMainWindow):
         if application is None:
             return
         apply_theme(application, "light" if light_mode else "dark")
+        self.scan_view.update_progress_glow_color()
         self._update_theme_button()
         self.centralWidget().update()
 
@@ -269,10 +270,12 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 "Wait for the scan to finish before isolating a file."
             )
-            return
+            return False
         results = result if isinstance(result, list) else [result]
         if self.quarantine_view.quarantine_results(results):
             self.navigation.setCurrentIndex(self.QUARANTINE)
+            return True
+        return False
 
     def _navigate(self, row):
         current_row = self.pages.currentIndex()
@@ -316,7 +319,7 @@ class MainWindow(QMainWindow):
         if attribute:
             setattr(self.scan_controller.scanner.detection_engine, attribute, enabled)
         elif key == "reduced_motion":
-            self.scan_view.radar.set_reduced_motion(enabled)
+            self.scan_view.set_reduced_motion(enabled)
         elif key == "download_monitor_enabled":
             self._set_download_monitor(enabled)
         if attribute and self.download_watcher and self.download_watcher.is_running:
@@ -371,6 +374,11 @@ class MainWindow(QMainWindow):
         """Keep scan results in a modal review window until its X is clicked."""
 
         dialog = ResultsDialog(report, self)
+        dialog.results_view.quarantine_requested.connect(
+            lambda result: dialog.accept()
+            if self._quarantine_result(result)
+            else None
+        )
         dialog.exec()
 
     def _set_download_monitor(self, enabled):

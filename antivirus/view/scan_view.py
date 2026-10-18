@@ -5,11 +5,21 @@ from __future__ import annotations
 from collections.abc import Callable
 from threading import Event
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
+from PySide6.QtCore import (
+    QEasingCurve,
+    QObject,
+    Qt,
+    QThread,
+    QVariantAnimation,
+    Signal,
+    Slot,
+)
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFileDialog,
     QDialog,
     QFrame,
+    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -24,6 +34,7 @@ from antivirus.model.scan_result import ScanResult
 from antivirus.view.components import Card, page_header, section_title
 from antivirus.view.radar import ScanRadar
 from antivirus.view.drive_dialog import DriveSelectionDialog
+from antivirus.view.theme import COLORS
 
 
 class ScanWorker(QObject):
@@ -126,6 +137,7 @@ class ScanView(QWidget):
         self._thread = None
         self._worker = None
         self._pending_result = None
+        self._reduced_motion = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 27, 30, 26)
@@ -211,6 +223,28 @@ class ScanView(QWidget):
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.hide()
+        self.progress_glow = QGraphicsDropShadowEffect(self.progress)
+        self.progress_glow.setOffset(0, 0)
+        self.progress_glow.setBlurRadius(8)
+        self.progress_glow.setColor(QColor(COLORS["signal"]))
+        self.progress_glow.setEnabled(False)
+        self.progress.setGraphicsEffect(self.progress_glow)
+        self.progress_glow_animation = QVariantAnimation(self.progress)
+        self.progress_glow_animation.setDuration(1800)
+        self.progress_glow_animation.setLoopCount(-1)
+        self.progress_glow_animation.setStartValue(0.0)
+        self.progress_glow_animation.setKeyValueAt(0.5, 1.0)
+        self.progress_glow_animation.setEndValue(0.0)
+        self.progress_glow_animation.setEasingCurve(QEasingCurve.Type.InOutSine)
+        self.progress_glow_animation.valueChanged.connect(
+            self._update_progress_glow
+        )
+        self.loading_label = QLabel("Loading reality...", self.progress_card)
+        self.loading_label.setProperty("role", "loadingText")
+        self.loading_label.hide()
+        self.panic_label = QLabel(self.progress_card)
+        self.panic_label.setProperty("role", "panicText")
+        self.panic_label.hide()
         self.status_label.setTextFormat(Qt.TextFormat.PlainText)
         self.status_label.setMinimumWidth(200)
         self.radar = ScanRadar(self.progress_card)
@@ -221,7 +255,9 @@ class ScanView(QWidget):
         progress_text.setSpacing(10)
         progress_text.addLayout(progress_header)
         progress_text.addWidget(self.status_label)
+        progress_text.addWidget(self.loading_label)
         progress_text.addWidget(self.progress)
+        progress_text.addWidget(self.panic_label)
         radar_row.addLayout(progress_text, 1)
         progress_layout.addLayout(radar_row)
         layout.addWidget(self.progress_card)
@@ -282,6 +318,9 @@ class ScanView(QWidget):
         self._set_scan_controls_enabled(False)
         self.progress_title.setText(f"{title} in progress")
         self.progress.show()
+        self.loading_label.show()
+        self.panic_label.hide()
+        self._sync_progress_glow(True)
         self.cancel_button.setVisible(supports_progress)
         self.progress.setRange(0, 0)
         self.radar.set_state("scanning")
@@ -315,6 +354,9 @@ class ScanView(QWidget):
         )
         self.progress.setRange(0, 1)
         self.progress.setValue(1)
+        self._sync_progress_glow(False)
+        self.loading_label.hide()
+        self.panic_label.hide()
         if isinstance(result, ScanResult):
             threats = len(result.threats)
             self.status_label.setText(
@@ -337,6 +379,9 @@ class ScanView(QWidget):
         self.radar.set_state("error")
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
+        self._sync_progress_glow(False)
+        self.loading_label.hide()
+        self.panic_label.hide()
         self.progress_title.setText("Scan could not finish")
         self.status_label.setText(
             f"Premiere Security could not complete this scan: {message}"
@@ -348,17 +393,48 @@ class ScanView(QWidget):
         self.radar.set_state("cancelled")
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
+        self._sync_progress_glow(False)
+        self.loading_label.hide()
+        self.panic_label.hide()
         self.progress_title.setText("Scan cancelled")
         self.status_label.setText(
-            "The scan stopped safely. Partial results are available in Results."
+            "The scan stopped safely. No results page was opened."
         )
 
     @Slot(int, int, str)
     def _scan_progress(self, current, total, path):
         self.progress.setRange(0, max(total, 1))
         self.progress.setValue(current)
+        percentage = min(max(current * 100 // max(total, 1), 0), 100)
+        if percentage >= 99:
+            self.panic_label.setText(f"PANIC MODE ENGAGED at {percentage}%")
+            self.panic_label.show()
+        else:
+            self.panic_label.hide()
         self.status_label.setText(f"Checking {current} of {total}: {path[-220:]}")
         self.status_label.setToolTip(path)
+
+    def set_reduced_motion(self, enabled):
+        self._reduced_motion = bool(enabled)
+        self.radar.set_reduced_motion(enabled)
+        self._sync_progress_glow(self.is_scanning())
+
+    def update_progress_glow_color(self):
+        self._update_progress_glow(self.progress_glow_animation.currentValue() or 0.0)
+
+    def _sync_progress_glow(self, scanning):
+        if scanning and not self._reduced_motion:
+            self.progress_glow.setEnabled(True)
+            self.progress_glow_animation.start()
+        else:
+            self.progress_glow_animation.stop()
+            self.progress_glow.setEnabled(False)
+
+    def _update_progress_glow(self, intensity):
+        color = QColor(COLORS["signal"])
+        color.setAlphaF(0.18 + 0.52 * float(intensity))
+        self.progress_glow.setColor(color)
+        self.progress_glow.setBlurRadius(5 + 19 * float(intensity))
 
     def _cancel_scan(self, confirm: bool = True):
         if self._worker and self._thread and self._thread.isRunning():
@@ -388,9 +464,11 @@ class ScanView(QWidget):
         self._thread.deleteLater()
         self._worker = None
         self._thread = None
-        if self._pending_result is not None:
+        if self._pending_result is not None and not getattr(
+            self._pending_result, "cancelled", False
+        ):
             self.scan_completed.emit(self._pending_result)
-            self._pending_result = None
+        self._pending_result = None
         self.scan_idle.emit()
 
     def _set_scan_controls_enabled(self, enabled: bool) -> None:

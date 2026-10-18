@@ -17,7 +17,7 @@ from antivirus.model.threat import Threat
 from antivirus.services.quarantine_service import QuarantineService
 from antivirus.view.main_window import MainWindow
 from antivirus.view.quarantine_view import QuarantineView
-from antivirus.view.results_view import ResultsView
+from antivirus.view.results_view import ResultsDialog, ResultsView
 
 
 def until(qapp, predicate, timeout=5):
@@ -237,6 +237,39 @@ def test_scanning_disables_vault_actions_and_old_result_actions(qapp, tmp_path):
     release.set()
     until(qapp, lambda: not window.scan_view.is_scanning())
     assert window.quarantine_view.isEnabled()
+    window.close()
+    settings.clear()
+
+
+def test_scan_results_popup_quarantine_button_starts_isolation(
+    qapp, tmp_path, monkeypatch
+):
+    settings = QSettings("IAS", "PremiereSecurity")
+    settings.clear()
+    window = MainWindow()
+    window.quarantine_view.service = QuarantineService(tmp_path / "vault")
+    window.quarantine_view._confirm = lambda *_: True
+    result = detection(tmp_path / "popup-quarantine.txt")
+    dialog_closed = []
+
+    def click_quarantine(dialog):
+        dialog.results_view.table.selectRow(0)
+        assert dialog.results_view.quarantine_button.isEnabled()
+        dialog.results_view.quarantine_button.click()
+        dialog_closed.append(dialog.result())
+        return dialog.result()
+
+    monkeypatch.setattr(ResultsDialog, "exec", click_quarantine)
+    window._show_results_dialog(ScanReport(results=[result]))
+    until(qapp, lambda: window.quarantine_view._thread is None)
+
+    assert dialog_closed == [int(QMessageBox.DialogCode.Accepted)]
+    assert not (tmp_path / "popup-quarantine.txt").exists(), (
+        window.quarantine_view.status.text(),
+        window.quarantine_view.service.items(),
+    )
+    assert window.quarantine_view.service.items()[0].state == "active"
+    assert window.pages.currentIndex() == window.QUARANTINE
     window.close()
     settings.clear()
 

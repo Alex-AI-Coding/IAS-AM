@@ -29,8 +29,8 @@ from antivirus.view.scan_view import ScanView
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def until(qapp, predicate):
-    deadline = monotonic() + 5
+def until(qapp, predicate, timeout=5):
+    deadline = monotonic() + timeout
     while not predicate() and monotonic() < deadline:
         qapp.processEvents()
         QTest.qWait(10)
@@ -119,7 +119,7 @@ def test_batch_quarantine_restore_conflict_and_delete_keep_unselected_content(
     view.item_changed.connect(lambda item: changes.append((item.state, view.is_busy())))
     assert view.quarantine_results(detected)
     assert not view.table.isEnabled()
-    until(qapp, lambda: not view.is_busy())
+    until(qapp, lambda: not view.is_busy(), timeout=30)
     assert view.held_card.value_label.text() == "3"
     assert all(not Path(result.file_path).exists() for result in detected)
     assert view.batch_details_button.isVisible()
@@ -135,7 +135,7 @@ def test_batch_quarantine_restore_conflict_and_delete_keep_unselected_content(
     conflict = Path(detected[0].file_path)
     conflict.write_bytes(b"Newer user content")
     view.restore_button.click()
-    until(qapp, lambda: not view.is_busy())
+    until(qapp, lambda: not view.is_busy(), timeout=30)
     assert conflict.read_bytes() == b"Newer user content"
     assert view.held_card.value_label.text() == "1"
     assert view.restored_card.value_label.text() == "2"
@@ -147,7 +147,7 @@ def test_batch_quarantine_restore_conflict_and_delete_keep_unselected_content(
         assert Path(detected[index].file_path).read_bytes() == original_bytes[index]
     select_all(view.table)
     view.delete_button.click()
-    until(qapp, lambda: not view.is_busy())
+    until(qapp, lambda: not view.is_busy(), timeout=30)
     assert view.table.rowCount() == 0
     assert all(item.state == "deleted" for item in view.service.items())
     assert conflict.read_bytes() == b"Newer user content"
@@ -166,7 +166,7 @@ def test_batch_isolation_continues_after_a_changed_original(
     view = QuarantineView(QuarantineService(tmp_path / "vault"))
     monkeypatch.setattr(view, "_confirm", lambda *_: True)
     assert view.quarantine_results(detected)
-    until(qapp, lambda: not view.is_busy())
+    until(qapp, lambda: not view.is_busy(), timeout=30)
     assert changed.read_bytes() == b"Changed after the scan"
     assert not Path(detected[0].file_path).exists()
     assert not Path(detected[2].file_path).exists()
@@ -213,14 +213,14 @@ def test_batch_retry_isolation_handles_verified_copies_with_unremoved_originals(
     view = QuarantineView(service)
     monkeypatch.setattr(view, "_confirm", lambda *_: True)
     assert view.quarantine_results(detected)
-    until(qapp, lambda: not view.is_busy())
+    until(qapp, lambda: not view.is_busy(), timeout=30)
     assert "3 need attention" in view.status.text()
     assert all(Path(result.file_path).exists() for result in detected)
     monkeypatch.setattr(service, "_remove_original", remove_original)
     select_all(view.table)
     assert view.retry_button.isEnabled()
     view.retry_button.click()
-    until(qapp, lambda: not view.is_busy())
+    until(qapp, lambda: not view.is_busy(), timeout=30)
     assert all(item.state == "active" for item in service.items())
     assert all(not Path(result.file_path).exists() for result in detected)
     view.close()

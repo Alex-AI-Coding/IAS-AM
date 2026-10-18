@@ -95,12 +95,13 @@ class QuarantineService:
 
     @staticmethod
     def _identity(info):
+        change_time = getattr(info, "st_birthtime_ns", info.st_ctime_ns)
         return (
             info.st_dev,
             info.st_ino,
             info.st_size,
             info.st_mtime_ns,
-            info.st_ctime_ns,
+            change_time,
         )
 
     @staticmethod
