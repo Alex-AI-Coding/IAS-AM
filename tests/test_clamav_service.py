@@ -8,6 +8,15 @@ class FakeClient:
         return {"Infected": False, "Result": "OK"}
 
 
+class StreamClient:
+    def __init__(self):
+        self.received = b""
+
+    def scan_stream(self, stream):
+        self.received = stream.read()
+        return None
+
+
 def test_clamav_service_reports_clean_file(tmp_path):
     clean_file = tmp_path / "clean.bin"
     clean_file.write_bytes(b"safe content")
@@ -28,6 +37,17 @@ def test_clamav_service_reports_detected_file(tmp_path):
 
     assert result["status"] == "detected"
     assert result["threats"]
+
+
+def test_clamav_service_streams_host_file_to_daemon(tmp_path):
+    sample = tmp_path / "photo.jpg"
+    sample.write_bytes(b"jpeg bytes")
+    client = StreamClient()
+
+    result = ClamAVService(client=client).scan_file(str(sample))
+
+    assert result["status"] == "clean"
+    assert client.received == b"jpeg bytes"
 
 
 def test_clamav_service_handles_missing_file():

@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 import json
 
+from antivirus.model.threat import SEVERITY_RANKS, normalize_severity
+
 STATES = {
     "pending": "Preparing",
     "active": "Isolated",
@@ -35,11 +37,8 @@ class QuarantineItem:
 
     @property
     def severity(self):
-        ranks = {"low": 1, "medium": 2, "high": 3, "critical": 4}
-        labels = [str(t.get("severity", "unknown")).casefold() for t in self.threats]
-        if not labels or any(label not in ranks for label in labels):
-            return "Unknown"
-        return max(labels, key=ranks.get).title()
+        labels = [normalize_severity(t.get("severity")) for t in self.threats]
+        return max(labels, key=SEVERITY_RANKS.get) if labels else "Medium"
 
     @property
     def state_label(self):

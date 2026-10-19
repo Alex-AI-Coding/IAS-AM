@@ -1,4 +1,4 @@
-"""Copy the six harmless classroom samples to explicitly selected folders.
+"""Copy the six core harmless classroom samples to explicitly selected folders.
 
 Standard-library only: this helper can run from the standalone demo kit or
 from the repository. It does not run the scanner, seed its database or execute

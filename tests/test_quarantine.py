@@ -440,15 +440,15 @@ def test_malformed_catalogue_cannot_crash_evidence_rendering(vault, tmp_path):
     assert payload(vault, item).exists()
 
 
-def test_severity_uses_highest_known_label_and_preserves_unknown(vault, tmp_path):
+def test_severity_uses_highest_of_the_three_allowed_labels(vault, tmp_path):
     result = detection(tmp_path / "severity.txt", severity="Low")
     result.threats.append(Threat("Educational.Second", "Spyware", "Critical"))
     item = vault.quarantine(result)
-    assert item.severity == "Critical" and item.categories == "Trojan, Spyware"
+    assert item.severity == "High" and item.categories == "Trojan, Spyware"
     result = detection(
         tmp_path / "unknown.txt", severity="Unclassified", category="Unknown"
     )
-    assert vault.quarantine(result).severity == "Unknown"
+    assert vault.quarantine(result).severity == "Medium"
 
 
 def test_vault_and_key_are_private_and_restored_file_not_executable(vault, tmp_path):

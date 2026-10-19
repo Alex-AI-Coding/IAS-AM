@@ -21,13 +21,16 @@ class ReportFormatter:
     @staticmethod
     def to_dict(report: ScanReport) -> dict:
         return {
-            "schema_version": 2,
+            "schema_version": 3,
             "summary": {
                 "total_files": report.total_files,
+                "checked_files": report.checked_files,
                 "clean_files": report.clean_files,
                 "threat_files": report.threat_files,
+                "suspicious_files": report.suspicious_files,
                 "threats_found": report.threats_found,
                 "high_risk_files": report.high_risk_files,
+                "quarantined_files": report.quarantined_files,
                 "error_files": report.error_files,
                 "skipped_files": report.skipped_files,
                 "incomplete_files": report.incomplete_files,
@@ -60,6 +63,15 @@ class ReportFormatter:
                     ],
                     "error_message": result.error_message,
                     "warnings": result.warnings,
+                    "risk_level": (
+                        "high_risk"
+                        if result.is_high_risk
+                        else "suspicious"
+                        if result.is_suspicious
+                        else "none"
+                    ),
+                    "quarantine_state": result.quarantine_state,
+                    "quarantine_message": result.quarantine_message,
                 }
                 for result in report.results
             ],
@@ -77,6 +89,9 @@ class ReportFormatter:
             [
                 "File Path",
                 "Status",
+                "Risk Level",
+                "Quarantine State",
+                "Quarantine Message",
                 "SHA256",
                 "Threat Name",
                 "Category",
@@ -91,13 +106,15 @@ class ReportFormatter:
                 "File Scan Completed At",
                 "File Warnings",
                 "Record Type",
+                "Results Recorded",
                 "Files Checked",
                 "No-match Files",
                 "Suspicious Files",
-                "Detection Matches",
                 "High-risk Files",
+                "Detection Matches",
+                "Automatically Quarantined Files",
                 "Error Files",
-                "Skipped Files",
+                "Not Checked Files",
                 "Incomplete Files",
                 "Scan Cancelled",
                 "Report Duration (seconds)",
@@ -114,6 +131,13 @@ class ReportFormatter:
                         for value in [
                             result.file_path,
                             result.status.value,
+                            "High risk"
+                            if result.is_high_risk
+                            else "Suspicious"
+                            if result.is_suspicious
+                            else "None",
+                            result.quarantine_state,
+                            result.quarantine_message,
                             result.sha256,
                             threat.name if threat else "",
                             threat.category if threat else "",
@@ -144,6 +168,8 @@ class ReportFormatter:
                             "",
                             "",
                             "",
+                            "",
+                            "",
                         ]
                     ]
                 )
@@ -159,6 +185,9 @@ class ReportFormatter:
                     "",
                     "",
                     "",
+                    "",
+                    "",
+                    "",
                     "; ".join(report.warnings),
                     "",
                     report.outcome,
@@ -168,10 +197,12 @@ class ReportFormatter:
                     "",
                     "summary",
                     report.total_files,
+                    report.checked_files,
                     report.clean_files,
-                    report.threat_files,
-                    report.threats_found,
+                    report.suspicious_files,
                     report.high_risk_files,
+                    report.threats_found,
+                    report.quarantined_files,
                     report.error_files,
                     report.skipped_files,
                     report.incomplete_files,

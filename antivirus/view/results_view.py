@@ -54,7 +54,7 @@ class ResultsView(QWidget):
         heading.addWidget(
             page_header(
                 "Scan results",
-                "Review what was checked, inspect detections, and export a clear report.",
+                "High risk files are automatically quarantined when enabled. Review suspicious, skipped, and incomplete results separately.",
             ),
             1,
         )
@@ -78,20 +78,34 @@ class ResultsView(QWidget):
         metrics = QHBoxLayout()
         metrics.setSpacing(13)
         self.total_card = MetricCard("F", "Files checked")
+        self.total_card.setToolTip(
+            "Files that reached a clean or detected verdict. Skipped files and "
+            "scan errors are listed separately and are not included here."
+        )
         self.clean_card = MetricCard("✓", "No matches")
-        self.threat_card = MetricCard("!", "Suspicious files")
+        self.threat_card = MetricCard("?", "Suspicious files")
+        self.threat_card.setToolTip(
+            "Low or Medium detections that could be dangerous and need review. "
+            "They are not automatically quarantined."
+        )
         self.high_risk_card = MetricCard("!", "High-risk files")
         self.high_risk_card.setToolTip(
-            "Files with at least one engine-reported High or Critical severity. "
-            "Severity is an engine assessment, not a guarantee of impact."
+            "Confirmed High detections. These files are automatically moved "
+            "to the encrypted quarantine vault when automatic quarantine is enabled."
         )
-        self.error_card = MetricCard("E", "Incomplete / skipped")
+        self.error_card = MetricCard("E", "Errors")
+        self.skipped_card = MetricCard(">", "Not checked")
+        self.skipped_card.setToolTip(
+            "Files intentionally not scanned, such as links, special files, oversized "
+            "files, or protected vault content."
+        )
         for card in (
             self.total_card,
             self.clean_card,
             self.threat_card,
             self.high_risk_card,
             self.error_card,
+            self.skipped_card,
         ):
             metrics.addWidget(card, 1)
         layout.addLayout(metrics)
@@ -105,7 +119,8 @@ class ResultsView(QWidget):
         self.filter_combo.addItems(
             [
                 "All results",
-                "Threats only",
+                "High risk only",
+                "Suspicious only",
                 "No matches only",
                 "Errors only",
                 "Skipped only",
@@ -209,17 +224,24 @@ class ResultsView(QWidget):
     def show_report(self, report):
         self.report = report
         self._isolated.clear()
+        self._isolated.update(
+            self._quarantine_key(result.file_path, result.sha256)
+            for result in report.results
+            if result.quarantine_state == "quarantined"
+        )
         self._page_index = 0
-        self.total_card.set_value(report.total_files)
+        self.total_card.set_value(report.checked_files)
         self.clean_card.set_value(report.clean_files)
-        self.threat_card.set_value(report.threat_files)
+        self.threat_card.set_value(report.suspicious_files)
         self.high_risk_card.set_value(report.high_risk_files)
-        self.error_card.set_value(report.incomplete_files)
+        self.error_card.set_value(report.error_files)
+        self.skipped_card.set_value(report.skipped_files)
         self.summary.setText(
-            f"{report.total_files} files checked · {report.clean_files} with no matches · "
-            f"{report.threat_files} suspicious · {report.threats_found} detection matches · "
-            f"{report.high_risk_files} high-risk · "
-            f"{report.incomplete_files} incomplete or skipped · {report.outcome.title()}"
+            f"{report.total_files} results recorded | {report.checked_files} files checked | "
+            f"{report.clean_files} with no matches | "
+            f"{report.high_risk_files} high risk ({report.quarantined_files} automatically quarantined) | "
+            f"{report.suspicious_files} suspicious | {report.error_files} errors | "
+            f"{report.skipped_files} skipped | {report.outcome.title()}"
         )
         self.summary.setWordWrap(True)
         self.summary.setTextFormat(Qt.TextFormat.PlainText)
@@ -255,10 +277,11 @@ class ResultsView(QWidget):
             for result in self.report.results
             if (
                 filter_index == 0
-                or (filter_index == 1 and result.is_detected)
-                or (filter_index == 2 and result.is_clean)
-                or (filter_index == 3 and result.status.value == "error")
-                or (filter_index == 4 and result.status.value == "skipped")
+                or (filter_index == 1 and result.is_high_risk)
+                or (filter_index == 2 and result.is_suspicious)
+                or (filter_index == 3 and result.is_clean)
+                or (filter_index == 4 and result.status.value == "error")
+                or (filter_index == 5 and result.status.value == "skipped")
             )
             and (
                 not query
@@ -270,7 +293,7 @@ class ResultsView(QWidget):
         pages = max(1, (count + self._page_size - 1) // self._page_size)
         self._page_index = min(self._page_index, pages - 1)
         self.page_label.setText(
-            f"Page {self._page_index + 1} of {pages} · {count} matching files · exports include every result"
+            f"Page {self._page_index + 1} of {pages} | {count} matching files | exports include every result"
         )
         self.previous_button.setEnabled(self._page_index > 0)
         self.next_button.setEnabled(self._page_index + 1 < pages)
@@ -282,20 +305,28 @@ class ResultsView(QWidget):
             row = self.table.rowCount()
             self.table.insertRow(row)
             threats = ", ".join(threat.name for threat in result.threats) or "—"
-            severities = (
-                ", ".join(dict.fromkeys(threat.severity for threat in result.threats))
-                or "—"
-            )
+            severities = result.severity or "—"
             methods = (
                 ", ".join(result.checked_engines or result.detection_methods) or "None"
             )
+            status = (
+                "High risk - quarantined"
+                if result.quarantine_state == "quarantined"
+                else "High risk - quarantine failed"
+                if result.is_high_risk and result.quarantine_state == "failed"
+                else "High risk - copy retained"
+                if result.is_high_risk and result.quarantine_state == "copy_retained"
+                else "High risk"
+                if result.is_high_risk
+                else "Suspicious"
+                if result.is_suspicious
+                else "No matches"
+                if result.status == ScanStatus.CLEAN
+                else result.status.value.title()
+            )
             values = [
                 result.file_path,
-                (
-                    "No matches"
-                    if result.status == ScanStatus.CLEAN
-                    else result.status.value.title()
-                ),
+                status,
                 threats,
                 severities,
                 methods,
@@ -406,11 +437,20 @@ class ResultsView(QWidget):
         methods_text = ", ".join(result.detection_methods) or "None reported"
         checked_text = ", ".join(result.checked_engines) or "None reported"
         warning_text = "\n".join(result.warnings) or "None"
+        risk_text = (
+            "High risk: a High detection; automatic quarantine was attempted."
+            if result.is_high_risk
+            else "Suspicious: a Low or Medium detection that needs review."
+            if result.is_suspicious
+            else "No detection risk classification."
+        )
         dialog = QMessageBox(self)
         dialog.setWindowTitle("Scan details")
         dialog.setTextFormat(Qt.TextFormat.PlainText)
         dialog.setText(
             f"File\n{result.file_path}\n\nStatus\n{result.status.value.title()}\n\n"
+            f"Risk classification\n{risk_text}\n\n"
+            f"Quarantine\n{result.quarantine_message or 'No automatic quarantine action.'}\n\n"
             f"SHA-256\n{result.sha256 or 'Unavailable'}\n\nDetections\n{threat_text}\n\n"
             f"Checks completed\n{checked_text}\n\nDetection methods\n{methods_text}\n\n"
             f"Engine outcomes\n{engine_text}\n\n"

@@ -1,0 +1,5 @@
+Harmless classroom demonstration. No executable code.
+EDU_SUSPICIOUS_PAYLOAD optional_toolbar telemetry_prompt
+
+This text is a safe, low-risk detection fixture. It represents a potentially
+unwanted or questionable file that needs review; it does not contain malware.

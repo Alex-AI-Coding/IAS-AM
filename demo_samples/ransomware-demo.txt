@@ -1,2 +1,0 @@
-Harmless classroom demonstration. No executable code.
-EDU_RANSOMWARE_PAYLOAD encrypt_all_files ransom_note

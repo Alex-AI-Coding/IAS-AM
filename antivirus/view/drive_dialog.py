@@ -57,9 +57,14 @@ class DriveSelectionDialog(QDialog):
         controls.addWidget(self.add_button)
         controls.addStretch()
         layout.addLayout(controls)
+        limit_note = (
+            f"The scan limit is {MAX_SCAN_FILES:,} files"
+            if MAX_SCAN_FILES is not None
+            else "There is no file-count limit"
+        )
         note = QLabel(
-            f"No drive is selected automatically. The scan limit is {MAX_SCAN_FILES:,} files "
-            "across the selected locations; inaccessible files are reported."
+            "No drive is selected automatically. "
+            f"{limit_note} across the selected locations; inaccessible files are reported."
         )
         note.setWordWrap(True)
         note.setProperty("role", "hint")

@@ -79,7 +79,7 @@ class SettingsView(QWidget):
         (
             "yara_enabled",
             "YARA signature detection",
-            "Uses the included educational rules for trojan, ransomware, worm, and spyware patterns.",
+            "Uses the included educational rules for high-risk and suspicious classroom patterns.",
             True,
         ),
         (
@@ -99,6 +99,12 @@ class SettingsView(QWidget):
             "Monitor new downloads",
             "Checks stable new or changed files in Downloads. Alerts only; file opening is not blocked.",
             False,
+        ),
+        (
+            "auto_quarantine_high_risk",
+            "Automatic high-risk quarantine",
+            "Moves files with a High detection into the encrypted local vault. Low and Medium detections stay available for review.",
+            True,
         ),
         (
             "reduced_motion",
@@ -155,6 +161,7 @@ class SettingsView(QWidget):
             "it does not store file contents. Exported reports may reveal sensitive file names. "
             "VirusTotal receives hashes only when enabled; hashes can identify known files. "
             "Download monitoring is optional and does not quarantine or delete files. "
+            "High detections are automatically quarantined when that setting is enabled. "
             "Manual Quarantine encrypts contents in your local vault; its catalogue retains "
             "paths and detection evidence.",
             privacy,

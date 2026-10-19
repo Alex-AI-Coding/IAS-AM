@@ -320,7 +320,7 @@ class QuarantineView(QWidget):
                     item.setForeground(
                         QColor(
                             COLORS["danger"]
-                            if entry.severity in {"High", "Critical"}
+                            if entry.severity == "High"
                             else (
                                 COLORS["warning"]
                                 if entry.severity == "Medium"

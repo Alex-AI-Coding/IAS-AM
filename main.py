@@ -6,7 +6,7 @@ import sys
 
 from pathlib import Path
 
-from antivirus.services.scanner import Scanner
+from antivirus.controller.scan_controller import ScanController
 from antivirus.services.report_formatter import ReportFormatter
 
 
@@ -48,7 +48,7 @@ def main() -> int:
         )
         return 0 if valid else 2
 
-    scanner = Scanner()
+    scanner = ScanController()
 
     if args.command == "scan":
         target = args.target
