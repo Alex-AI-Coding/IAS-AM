@@ -38,14 +38,27 @@ class ScanReport:
 
     @property
     def high_risk_files(self) -> int:
-        """Count files with at least one engine-reported High or Critical finding."""
-        return sum(
-            any(
-                str(threat.severity or "").strip().casefold() in {"high", "critical"}
-                for threat in result.threats
-            )
-            for result in self.results
-        )
+        """Count files with at least one High finding."""
+        return sum(result.is_high_risk for result in self.results)
+
+    @property
+    def suspicious_files(self) -> int:
+        """Count Low or Medium findings that remain available for review."""
+        return sum(result.is_suspicious for result in self.results)
+
+    @property
+    def quarantined_files(self) -> int:
+        """Count files whose original copy was removed after automatic isolation."""
+        return sum(result.quarantine_state == "quarantined" for result in self.results)
+
+    @property
+    def checked_files(self) -> int:
+        """Count files that produced a clean or detection verdict.
+
+        Skipped entries and scan errors are recorded in ``total_files`` for
+        transparency, but are deliberately excluded from this count.
+        """
+        return self.clean_files + self.threat_files
 
     @property
     def incomplete_files(self) -> int:
@@ -124,6 +137,8 @@ class ScanReport:
                     warnings=list(item.get("warnings", []) or []),
                     started_at=str(item.get("started_at", "")),
                     completed_at=str(item.get("completed_at", "")),
+                    quarantine_state=str(item.get("quarantine_state", "") or ""),
+                    quarantine_message=str(item.get("quarantine_message", "") or ""),
                 )
             )
 

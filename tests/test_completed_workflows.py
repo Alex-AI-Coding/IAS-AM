@@ -47,6 +47,13 @@ class PositiveVirusTotalService:
         }
 
 
+class RateLimitedVirusTotalService:
+    api_key = "test-key"
+
+    def lookup_hash(self, _file_hash):
+        return {"status": "error", "message": "VirusTotal quota reached."}
+
+
 def test_scan_repository_creates_parent_and_round_trips_details(tmp_path):
     db_path = tmp_path / "nested" / "scan_history.db"
     repository = ScanRepository(str(db_path))
@@ -110,6 +117,9 @@ def test_virustotal_detection_is_connected_to_detection_engine(tmp_path):
         clamav_service=FakeClamAVService(),
         virustotal_service=PositiveVirusTotalService(),
         threat_repository=EmptyThreatRepository(),
+        hash_enabled=False,
+        yara_enabled=False,
+        clamav_enabled=False,
         virustotal_enabled=True,
     )
 
@@ -118,6 +128,47 @@ def test_virustotal_detection_is_connected_to_detection_engine(tmp_path):
     assert result.status == ScanStatus.DETECTED
     assert "virustotal" in result.detection_methods
     assert any(threat.name == "VirusTotal.Consensus" for threat in result.threats)
+
+
+def test_virustotal_stays_on_standby_after_a_local_check(tmp_path):
+    sample = tmp_path / "sample.bin"
+    sample.write_bytes(b"safe test content")
+    engine = DetectionEngine(
+        hash_service=FakeHashService(),
+        yara_service=FakeYaraService(),
+        clamav_service=FakeClamAVService(),
+        virustotal_service=PositiveVirusTotalService(),
+        threat_repository=EmptyThreatRepository(),
+        virustotal_enabled=True,
+    )
+
+    result = engine.analyze_file(str(sample))
+
+    assert result.is_clean
+    assert result.engine_results["virustotal"] == "standby"
+
+
+def test_virustotal_rate_limit_is_only_a_warning_when_used_as_backup(tmp_path):
+    sample = tmp_path / "sample.bin"
+    sample.write_bytes(b"safe test content")
+    engine = DetectionEngine(
+        hash_service=FakeHashService(),
+        yara_service=FakeYaraService(),
+        clamav_service=FakeClamAVService(),
+        virustotal_service=RateLimitedVirusTotalService(),
+        threat_repository=EmptyThreatRepository(),
+        hash_enabled=False,
+        yara_enabled=False,
+        clamav_enabled=False,
+        virustotal_enabled=True,
+    )
+
+    result = engine.analyze_file(str(sample))
+
+    assert result.status == ScanStatus.SKIPPED
+    assert "VirusTotal lookup failed" not in result.error_message
+    assert result.engine_results["virustotal"] == "error"
+    assert result.warnings == ["VirusTotal backup lookup unavailable: VirusTotal quota reached."]
 
 
 def test_statistics_use_persisted_threat_details(tmp_path):

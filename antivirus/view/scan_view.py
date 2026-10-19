@@ -347,7 +347,6 @@ class ScanView(QWidget):
             "error"
             if (
                 getattr(result, "error_files", 0)
-                or getattr(result, "skipped_files", 0)
                 or getattr(result, "error_message", None)
             )
             else "complete"
@@ -359,8 +358,17 @@ class ScanView(QWidget):
         self.panic_label.hide()
         if isinstance(result, ScanResult):
             threats = len(result.threats)
+            classification = (
+                "High risk and automatically quarantined. "
+                if result.quarantine_state == "quarantined"
+                else "High risk; automatic quarantine needs attention. "
+                if result.is_high_risk
+                else "Suspicious; review the result. "
+                if result.is_suspicious
+                else ""
+            )
             self.status_label.setText(
-                f"Result: {result.status.value}. {threats} detection(s). "
+                f"{classification}Result: {result.status.value}. {threats} detection(s). "
                 + (
                     result.error_message
                     or "No matches means no known pattern was found; it does not prove safety."
@@ -368,8 +376,9 @@ class ScanView(QWidget):
             )
         else:
             self.status_label.setText(
-                f"Scan complete. {result.total_files} files checked, "
-                f"{result.threat_files} suspicious, {result.error_files} errors, "
+                f"Scan complete. {result.total_files} results recorded: {result.checked_files} files checked, "
+                f"{result.high_risk_files} high risk ({result.quarantined_files} quarantined), "
+                f"{result.suspicious_files} suspicious, {result.error_files} errors, "
                 f"and {result.skipped_files} skipped. " + " ".join(result.warnings)
             )
         self.progress_title.setText("Scan complete")

@@ -76,7 +76,7 @@ Back up the **whole vault with the app closed**, including its catalogue, payloa
 | ClamAV | Off in desktop settings; auto-available in headless scanner | Optional local daemon at `127.0.0.1:3310`; errors are not treated as clean |
 | VirusTotal | Off | Optional HTTPS hash lookup; never uploads contents; unknown/quota/error states are distinguished |
 
-Files larger than **256 MiB** are skipped. Folder discovery stops at **25,000 files** with a visible warning. Links, junctions and special files are skipped. YARA has a **10-second match timeout**. VirusTotal requests have an **8-second network timeout**, a short in-memory cache and a **15-second minimum interval per service instance**. For bulk scans, leave VirusTotal off; quotas from your provider still apply.
+File size and discovery-count limits are disabled by default; set positive `ANTIVIRUS_MAX_FILE_BYTES` or `ANTIVIRUS_MAX_SCAN_FILES` values to impose them. Links, junctions and special files are skipped because following them can cause filesystem loops or block on device files. YARA has a **10-second match timeout**. VirusTotal requests have an **8-second network timeout**, a short in-memory cache and a **15-second minimum interval per service instance**. For bulk scans, leave VirusTotal off; quotas from your provider still apply.
 
 An enabled engine failure produces an error or an incomplete-check warning while retaining any detections from other engines. A scan with no working detection engine does not receive a clean verdict. Missing folders, cancelled scans, empty folders and skipped files remain distinguishable.
 
@@ -92,7 +92,9 @@ See [the desktop update guide](docs/DESKTOP-UPDATE.md) for installation, GitHub 
 
 ## Safe classroom demo
 
-The `demo_samples` directory contains a clean sample and clearly marked demonstration files for ransomware, trojan, worm and spyware. Open **Scan → Choose folder** and select that directory.
+The `demo_samples` directory contains a clean sample and clearly marked, harmless demonstration files for ransomware, trojan, worm, spyware and a low-risk suspicious finding. Open **Scan → Choose folder** and select that directory.
+
+High detections are classified as **High risk** and, by default, automatically moved to the encrypted quarantine vault. Low and Medium detections are classified as **Suspicious**: they may be dangerous and remain available for review. Errors and skipped files are shown as separate counts; skipped files were not checked because of an explicit scanner limit or protection rule.
 
 To place byte-identical harmless samples in several folders or drives you select:
 

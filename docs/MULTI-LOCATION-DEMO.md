@@ -1,8 +1,10 @@
 # Scan harmless samples in several folders or drives
 
-The repository includes six plain-text samples under `demo_samples/`. They
-contain no executable malware. Four deliberately match the included educational
-YARA rules; one is a clean control; one demonstrates exact hash matching after
+The multi-location kit includes six core plain-text samples under `demo_samples/`.
+The repository also includes two low-risk suspicious fixtures for a direct
+folder-scan demonstration. None contain executable malware. Four core samples
+deliberately match the included educational YARA rules; one is a clean control;
+one demonstrates exact hash matching after
 the local catalogue is seeded. Their names describe classroom categories, not
 confirmed infections or measured danger levels.
 
@@ -22,7 +24,7 @@ preview the paths without writing. The helper requires only Python's standard
 library; it does not need the application's virtual environment.
 
 Each destination contains `location-01`, `location-02`, and so on. Each location
-contains all six original samples, copied without changing their contents. A
+contains all six core samples, copied without changing their contents. A
 destination must already exist. A previous `IAS-AM-Scan-Demo` folder is never
 overwritten: choose another destination or move the old demo folder before
 repeating the command. After a permission/disk error, inspect any partially
@@ -55,14 +57,15 @@ created demo folder before trying again.
    different full paths. Rename a sample without editing it and it should still
    match: these checks examine contents, not the filename.
 
-Manual quarantine removes the selected original after verifying the encrypted
-copy, so later scans can contain fewer files. A USB drive with FAT/exFAT can be
+High-risk results are automatically quarantined by default, so later scans can
+contain fewer files. Manual quarantine removes any selected detected original
+after verifying the encrypted copy. A USB drive with FAT/exFAT can be
 used for scanning, but restoring to it may fail because the app's no-overwrite
 restore requires hard-link support. Use an NTFS destination for a restore demo.
 
 ## Standalone downloadable kit
 
-The kit contains this helper and the same six samples. Extract it into
+The kit contains this helper and the same six core samples. Extract it into
 `Downloads\IAS-AM-Demo-Kit`, then run it from any PowerShell terminal:
 
 ```powershell

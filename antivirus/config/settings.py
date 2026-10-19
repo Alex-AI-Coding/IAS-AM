@@ -49,6 +49,19 @@ def positive_int(name: str, default: int) -> int:
     return value
 
 
-MAX_FILE_BYTES = positive_int("ANTIVIRUS_MAX_FILE_BYTES", 256 * 1024 * 1024)
-MAX_SCAN_FILES = positive_int("ANTIVIRUS_MAX_SCAN_FILES", 25000)
+def optional_positive_int(name: str) -> int | None:
+    """Return an optional positive limit; blank or 0 means unlimited."""
+    value = os.getenv(name, "").strip()
+    if not value or value == "0":
+        return None
+    parsed = int(value)
+    if parsed < 0:
+        raise ValueError(f"{name} must be zero or a positive integer")
+    return parsed
+
+
+# Scans are unlimited by default. Operators can opt into resource caps with
+# positive environment values; 0 (or unset) means no cap.
+MAX_FILE_BYTES = optional_positive_int("ANTIVIRUS_MAX_FILE_BYTES")
+MAX_SCAN_FILES = optional_positive_int("ANTIVIRUS_MAX_SCAN_FILES")
 YARA_TIMEOUT_SECONDS = positive_int("ANTIVIRUS_YARA_TIMEOUT", 10)

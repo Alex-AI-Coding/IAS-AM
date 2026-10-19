@@ -44,12 +44,22 @@ class ClamAVService:
             }
 
         try:
-            scan_method = getattr(self.client, "scan_file", None) or getattr(
-                self.client, "scan", None
-            )
-            if scan_method is None:
-                raise RuntimeError("ClamAV client does not provide a file scan method.")
-            raw = scan_method(str(path))
+            # clamd in Docker cannot open host paths such as D:\\Downloads\\photo.jpg.
+            # Stream the bytes through the daemon protocol so local Windows files work
+            # without mounting a host drive into the container.
+            stream_method = getattr(self.client, "scan_stream", None)
+            if stream_method is not None:
+                with path.open("rb") as stream:
+                    raw = stream_method(stream)
+            else:
+                scan_method = getattr(self.client, "scan_file", None) or getattr(
+                    self.client, "scan", None
+                )
+                if scan_method is None:
+                    raise RuntimeError(
+                        "ClamAV client does not provide a scan method."
+                    )
+                raw = scan_method(str(path))
         except Exception as exc:  # pragma: no cover - defensive boundary
             return {
                 "status": "error",

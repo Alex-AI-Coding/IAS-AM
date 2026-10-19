@@ -13,7 +13,7 @@ class HashService:
         return hashlib.sha256(data).hexdigest()
 
     @staticmethod
-    def calculate_sha256(path: str, max_bytes: int = MAX_FILE_BYTES) -> str:
+    def calculate_sha256(path: str, max_bytes: int | None = MAX_FILE_BYTES) -> str:
         target = Path(path)
         if not target.exists():
             raise FileNotFoundError(f"File not found: {path}")
@@ -32,7 +32,7 @@ class HashService:
             total = 0
             for chunk in iter(lambda: file_handle.read(65536), b""):
                 total += len(chunk)
-                if total > max_bytes:
+                if max_bytes is not None and total > max_bytes:
                     raise ValueError(
                         "File grew beyond the hashing limit during scanning."
                     )

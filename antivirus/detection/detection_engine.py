@@ -36,7 +36,7 @@ class DetectionEngine:
         yara_enabled: bool = True,
         clamav_enabled: bool | None = None,
         virustotal_enabled: bool = False,
-        max_file_bytes: int = MAX_FILE_BYTES,
+        max_file_bytes: int | None = MAX_FILE_BYTES,
     ):
         load_environment()
         self.hash_service = hash_service or HashService()
@@ -54,7 +54,7 @@ class DetectionEngine:
             else clamav_enabled
         )
         self.virustotal_enabled = virustotal_enabled
-        if max_file_bytes <= 0:
+        if max_file_bytes is not None and max_file_bytes <= 0:
             raise ValueError("max_file_bytes must be positive")
         self.max_file_bytes = max_file_bytes
 
@@ -89,7 +89,10 @@ class DetectionEngine:
                 status=ScanStatus.SKIPPED,
                 error_message="Only regular files are scanned; links and special files are skipped.",
             )
-        if original_stat.st_size > self.max_file_bytes:
+        if (
+            self.max_file_bytes is not None
+            and original_stat.st_size > self.max_file_bytes
+        ):
             return ScanResult(
                 file_path=file_path,
                 status=ScanStatus.SKIPPED,
@@ -197,16 +200,18 @@ class DetectionEngine:
                     ),
                 )
 
-        if self.virustotal_enabled:
+        # VirusTotal is deliberately a last resort. Local engines are preferred
+        # because they work offline and do not consume a shared API quota.
+        if self.virustotal_enabled and not result.checked_engines:
             try:
                 online_result = self.virustotal_service.lookup_hash(result.sha256)
             except Exception as exc:
                 online_result = {"status": "error", "message": str(exc)}
             result.engine_results["virustotal"] = online_result.get("status", "error")
             if online_result.get("status") not in ("clean", "detected", "unknown"):
-                self._add_error(
-                    result,
-                    f"VirusTotal lookup failed: {online_result.get('message', 'unknown error')}",
+                result.warnings.append(
+                    "VirusTotal backup lookup unavailable: "
+                    f"{online_result.get('message', 'unknown error')}"
                 )
             elif online_result.get("status") == "detected":
                 malicious = int(online_result.get("malicious_count", 0))
@@ -230,6 +235,8 @@ class DetectionEngine:
                         },
                     ),
                 )
+        elif self.virustotal_enabled:
+            result.engine_results["virustotal"] = "standby"
 
         try:
             current_stat = candidate.lstat()
@@ -319,6 +326,8 @@ class DetectionEngine:
             "EducationalTrojan": "Educational.Trojan.Test",
             "EducationalWorm": "Educational.Worm.Test",
             "EducationalSpyware": "Educational.Spyware.Test",
+            "EducationalSuspicious": "Educational.Suspicious.Test",
+            "EducationalAdware": "Educational.Adware.Test",
             "RansomwareSignature_Encryption": "Ransomware.Encryption",
             "RansomwareSignature_FileMarking": "Ransomware.FileMarking",
             "TrojanSignature_Backdoor": "Trojan.Backdoor",
@@ -340,6 +349,8 @@ class DetectionEngine:
             "EducationalTrojan": "Trojan",
             "EducationalWorm": "Worm",
             "EducationalSpyware": "Spyware",
+            "EducationalSuspicious": "Potentially unwanted",
+            "EducationalAdware": "Potentially unwanted",
             "RansomwareSignature_Encryption": "Ransomware",
             "RansomwareSignature_FileMarking": "Ransomware",
             "TrojanSignature_Backdoor": "Trojan",

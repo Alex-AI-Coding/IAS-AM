@@ -108,6 +108,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(960, 640)
         self.resize(1180, 760)
         self.download_watcher = None
+        self._download_scan_controller = None
         self._closing = False
         self._close_timer = QTimer(self)
         self._close_timer.setInterval(100)
@@ -322,6 +323,10 @@ class MainWindow(QMainWindow):
             self.scan_view.set_reduced_motion(enabled)
         elif key == "download_monitor_enabled":
             self._set_download_monitor(enabled)
+        elif key == "auto_quarantine_high_risk":
+            self.scan_controller.auto_quarantine_high_risk = enabled
+            if self._download_scan_controller:
+                self._download_scan_controller.auto_quarantine_high_risk = enabled
         if attribute and self.download_watcher and self.download_watcher.is_running:
             # The running watcher uses its own engine snapshot. Restart after it finishes.
             self.download_watcher.stop()
@@ -395,8 +400,11 @@ class MainWindow(QMainWindow):
                 virustotal_enabled=engine.virustotal_enabled,
             )
             watch_controller = ScanController(
-                Scanner(watch_engine), self.scan_controller.repository
+                Scanner(watch_engine),
+                self.scan_controller.repository,
+                auto_quarantine_high_risk=self.scan_controller.auto_quarantine_high_risk,
             )
+            self._download_scan_controller = watch_controller
 
             def check_download(path):
                 self.download_ready.emit(watch_controller.scan_file(path))
@@ -411,7 +419,7 @@ class MainWindow(QMainWindow):
             )
             self.download_watcher.start()
             self.statusBar().showMessage(
-                "Download monitoring is on. Stable new files are checked; alerts do not block opening files."
+                "Download monitoring is on. High-risk downloads are automatically quarantined; suspicious alerts do not block opening files."
             )
         except Exception as exc:
             self._monitor_failed(str(exc))
@@ -429,8 +437,12 @@ class MainWindow(QMainWindow):
             return
         # Do not replace a manual scan's Results page with unsolicited background data.
         label = (
-            "Suspicious download"
-            if result.is_detected
+            "High-risk download quarantined"
+            if result.quarantine_state == "quarantined"
+            else "High-risk download needs isolation"
+            if result.is_high_risk
+            else "Suspicious download"
+            if result.is_suspicious
             else (
                 "No matches in download"
                 if result.is_clean

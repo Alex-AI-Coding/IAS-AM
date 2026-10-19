@@ -20,13 +20,14 @@ import uuid
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-from antivirus.config.settings import QUARANTINE_DIR, MAX_FILE_BYTES
+from antivirus.config.settings import QUARANTINE_DIR
 from antivirus.model.quarantine_item import QuarantineItem
 from antivirus.repository.quarantine_repository import QuarantineRepository
 from antivirus.services.vault_key import windows_protect
 
 MAGIC = b"PREMIERE-VAULT\x01"
 CHUNK_SIZE = 65536
+DEFAULT_MAX_BYTES = 256 * 1024 * 1024
 
 
 class QuarantineError(ValueError):
@@ -34,7 +35,7 @@ class QuarantineError(ValueError):
 
 
 class QuarantineService:
-    def __init__(self, directory=None, max_bytes=MAX_FILE_BYTES):
+    def __init__(self, directory=None, max_bytes=DEFAULT_MAX_BYTES):
         self.directory = Path(directory or QUARANTINE_DIR).absolute()
         self.payload_directory = self.directory / "payloads"
         self.max_bytes = max_bytes
