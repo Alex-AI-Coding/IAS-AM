@@ -19,6 +19,61 @@ def test_get_scan_statistics(statistics_service):
     assert stats["time_period_hours"] == 24
 
 
+def test_scan_statistics_separate_flagged_files_matches_and_unchecked_results():
+    class ScanRepo:
+        def get_recent_scans(self, limit=None):
+            return [
+                {
+                    "status": "detected",
+                    "file_count": 5,
+                    "clean_files": 1,
+                    "error_files": 1,
+                    "skipped_files": 1,
+                    "threats_found": 3,
+                    "report": {
+                        "summary": {
+                            "total_files": 5,
+                            "checked_files": 3,
+                            "clean_files": 1,
+                            "threat_files": 2,
+                            "error_files": 1,
+                            "skipped_files": 1,
+                            "threats_found": 3,
+                        }
+                    },
+                }
+            ]
+
+    stats = StatisticsService(scan_repo=ScanRepo()).get_scan_statistics(hours=None)
+
+    assert stats["files_scanned"] == 3
+    assert stats["results_recorded"] == 5
+    assert stats["threat_files"] == 2
+    assert stats["threats_found"] == stats["detection_matches"] == 3
+    assert stats["threat_scans"] == 1
+
+
+def test_scan_statistics_falls_back_for_older_history_summaries():
+    class ScanRepo:
+        def get_recent_scans(self, limit=None):
+            return [
+                {
+                    "status": "detected",
+                    "file_count": 5,
+                    "clean_files": 2,
+                    "error_files": 1,
+                    "skipped_files": 1,
+                    "threats_found": 4,
+                }
+            ]
+
+    stats = StatisticsService(scan_repo=ScanRepo()).get_scan_statistics(hours=None)
+
+    assert stats["files_scanned"] == 3
+    assert stats["threat_files"] == 1
+    assert stats["detection_matches"] == 4
+
+
 def test_get_threat_distribution(statistics_service):
     distribution = statistics_service.get_threat_distribution()
     assert isinstance(distribution, dict)

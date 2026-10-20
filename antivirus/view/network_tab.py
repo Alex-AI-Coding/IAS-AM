@@ -16,7 +16,11 @@ from PySide6.QtWidgets import (
 )
 
 from antivirus.services.network_monitor_service import NetworkMonitorService
-from antivirus.view.components import configure_table, page_header
+from antivirus.view.components import (
+    configure_table,
+    page_header,
+    set_table_row_numbers,
+)
 from antivirus.view.theme import COLORS
 
 
@@ -87,11 +91,13 @@ class NetworkMonitorTab(QWidget):
         layout.addWidget(
             page_header(
                 "Active network connections",
-                "Review remote destinations, owning processes, local ports, and connection state. These details can help investigate activity but cannot prove an intrusion.",
+                "Review remote destinations, owning processes, local ports, and connection state. "
+                "These details can help investigate activity but cannot prove an intrusion.",
             )
         )
         self.status = QLabel(
-            "Select a connection and choose Details for its process path, account, start time, destination context, and port guidance. Termination closes the entire owning application."
+            "Select a connection and choose Details for its process path, account, start time, "
+            "destination context, and port guidance. Termination closes the entire owning application."
         )
         self.status.setWordWrap(True)
         self.status.setProperty("role", "muted")
@@ -158,7 +164,7 @@ class NetworkMonitorTab(QWidget):
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.ready.connect(self._show_rows)
-        self._worker.failed.connect(self.status.setText)
+        self._worker.failed.connect(self._show_error)
         self._worker.done.connect(self._thread.quit)
         self._worker.done.connect(self._worker.deleteLater)
         self._thread.finished.connect(self._finished)
@@ -190,9 +196,20 @@ class NetworkMonitorTab(QWidget):
                 item = QTableWidgetItem(str(row.get(key) or "—"))
                 item.setToolTip(str(row.get(key) or "—"))
                 self.table.setItem(index, column, item)
+        set_table_row_numbers(self.table)
         self.status.setText(
-            f"{len(self._rows)} active remote connections. Select a row for details; public IPs and unfamiliar ports are not, by themselves, evidence of an intrusion."
+            f"{len(self._rows)} active remote connections. Select a row for details; public IPs "
+            "and unfamiliar ports are not, by themselves, evidence of an intrusion."
         )
+        self._update_terminate_button()
+
+    @Slot(str)
+    def _show_error(self, message):
+        self._rows = []
+        self.table.clearSelection()
+        self.table.setRowCount(0)
+        set_table_row_numbers(self.table)
+        self.status.setText(message)
         self._update_terminate_button()
 
     @Slot()
@@ -256,7 +273,9 @@ class NetworkMonitorTab(QWidget):
             f"Remote port {remote_port}: {port_guidance}. Port numbers can be used by different services.",
             f"Protocol/state: {row.get('protocol', 'Unknown')} / {row.get('state', 'Unknown')} — {state_guidance}.",
             "",
-            "This connection snapshot cannot confirm a hacker or determine whether traffic is malicious. Investigate an unexpected process, verify its executable and publisher, and compare the destination with activity you recognize.",
+            "This connection snapshot cannot confirm a hacker or determine whether traffic is malicious. "
+            "Investigate an unexpected process, verify its executable and publisher, and compare "
+            "the destination with activity you recognize.",
         ]
         QMessageBox.information(
             self,

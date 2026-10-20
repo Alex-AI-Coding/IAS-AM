@@ -20,6 +20,10 @@ class StatisticsService:
         filtered_scans = []
         threat_scans = 0
         clean_scans = 0
+        files_checked = 0
+        results_recorded = 0
+        threat_files = 0
+        detection_matches = 0
 
         for scan in recent_scans:
             scan_time = scan.get("started_at")
@@ -35,10 +39,28 @@ class StatisticsService:
 
             filtered_scans.append(scan)
             status = scan.get("status", "unknown")
+            summary = self._summary(scan)
+            total = self._count(summary, "total_files", scan.get("file_count", 0))
+            clean = self._count(summary, "clean_files", scan.get("clean_files", 0))
+            errors = self._count(summary, "error_files", scan.get("error_files", 0))
+            skipped = self._count(summary, "skipped_files", scan.get("skipped_files", 0))
+            flagged = self._count(
+                summary,
+                "threat_files",
+                max(0, total - clean - errors - skipped),
+            )
+            checked = self._count(summary, "checked_files", clean + flagged)
+            matches = self._count(
+                summary, "threats_found", scan.get("threats_found", 0)
+            )
+            results_recorded += total
+            files_checked += checked
+            threat_files += flagged
+            detection_matches += matches
 
-            if status == "detected":
+            if flagged:
                 threat_scans += 1
-            elif status == "clean":
+            if status == "clean":
                 clean_scans += 1
 
         total_scans = len(filtered_scans)
@@ -51,16 +73,29 @@ class StatisticsService:
                 round((threat_scans / total_scans * 100), 2) if total_scans > 0 else 0
             ),
             "time_period_hours": hours,
-            "files_scanned": sum(
-                int(scan.get("file_count", 0)) for scan in filtered_scans
-            ),
-            "threats_found": sum(
-                int(scan.get("threats_found", 0)) for scan in filtered_scans
-            ),
+            "files_scanned": files_checked,
+            "results_recorded": results_recorded,
+            "threat_files": threat_files,
+            "threats_found": detection_matches,
+            "detection_matches": detection_matches,
             "clean_files": sum(
-                int(scan.get("clean_files", 0)) for scan in filtered_scans
+                self._count(self._summary(scan), "clean_files", scan.get("clean_files", 0))
+                for scan in filtered_scans
             ),
         }
+
+    @staticmethod
+    def _summary(scan: dict) -> dict:
+        report = scan.get("report")
+        if not isinstance(report, dict):
+            return {}
+        summary = report.get("summary", {})
+        return summary if isinstance(summary, dict) else {}
+
+    @staticmethod
+    def _count(summary: dict, key: str, fallback: object) -> int:
+        value = summary.get(key, fallback)
+        return max(0, int(value or 0))
 
     def get_threat_distribution(self) -> Dict[str, int]:
         """Get distribution of threats by category."""

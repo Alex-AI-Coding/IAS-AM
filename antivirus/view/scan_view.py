@@ -378,7 +378,8 @@ class ScanView(QWidget):
             self.status_label.setText(
                 f"Scan complete. {result.total_files} results recorded: {result.checked_files} files checked, "
                 f"{result.high_risk_files} high risk ({result.quarantined_files} quarantined), "
-                f"{result.suspicious_files} suspicious, {result.error_files} errors, "
+                f"{result.suspicious_files} suspicious, {result.threats_found} detection matches, "
+                f"{result.error_files} errors, "
                 f"and {result.skipped_files} skipped. " + " ".join(result.warnings)
             )
         self.progress_title.setText("Scan complete")

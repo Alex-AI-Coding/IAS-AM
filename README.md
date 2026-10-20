@@ -31,17 +31,19 @@ Python 3.12+ is required. The desktop app runs independently of Flask and Docker
 
 | Workspace | Function |
 |---|---|
-| Dashboard | Lifetime scan totals, honest engine availability, empty catalogue notice, recent activity |
+| Dashboard | Lifetime scan totals that distinguish checked files, files with detections and individual detection matches; honest engine availability and recent activity |
 | Scan | File, recursive folder, selected-drive and Quick scans; background worker; progress; native radar; safe cancellation |
 | Results | Status filters, search, pagination, per-engine evidence, SHA-256, durations and confirmed batch quarantine |
 | Quarantine | Ctrl/Shift/Ctrl+A selection; verified batch isolation, restore, retry and delete; individual restore-as and evidence |
 | Reports | JSON and CSV exports; CSV formula escaping; signed JSON with trusted-key verification |
-| History | SQLite summaries, UTC times, targets and findings; confirmed clearing of selected entries or all history |
+| History | SQLite summaries, UTC times, targets, flagged-file and detection-match counts; confirmed clearing of selected entries or all history |
 | Network | Optional on-demand, read-only connection snapshot without packet capture or process termination |
 | Settings | Saved engine preferences, opt-in stable-download monitoring, reduced motion, privacy information |
 | CLI / API | Structured reports, useful CLI exit codes, authenticated and folder-restricted API |
 
 All scans are read-only. Choosing **Quarantine selected** explicitly changes files through the separate quarantine service. Optional download monitoring checks stable **new or changed** files, keeps summaries in History and posts a status-bar alert. It does not block file opening or move/delete files. Existing downloads require a manual scan. Monitoring is off by default and stops safely on application close. Changing engine settings stops an existing monitor; enable it again to use the new settings.
+
+Row numbers in tables follow the current result order (and continue across pages). Detection counts distinguish **files with detections** from **detection matches**: one file may produce multiple matches, and scanning it again is counted as another file check.
 
 Every desktop page uses the reference palette: `#031716`, `#032F30`, `#0A7075`, `#0C969C`, `#6BA3BE`, `#274D60`. Readable light text, amber warnings and a complementary pink danger accent support the ocean theme. Labels communicate meaning independently of color.
 

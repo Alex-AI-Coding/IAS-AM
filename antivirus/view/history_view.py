@@ -23,6 +23,7 @@ from antivirus.view.components import (
     configure_table,
     display_datetime,
     page_header,
+    set_table_row_numbers,
     short_target,
 )
 
@@ -59,14 +60,15 @@ class HistoryView(QWidget):
         heading.addWidget(self.clear_button)
         layout.addLayout(heading)
 
-        self.table = QTableWidget(0, 8, self)
+        self.table = QTableWidget(0, 9, self)
         self.table.setHorizontalHeaderLabels(
             [
                 "Started",
                 "Type",
                 "Target",
-                "Files",
-                "Threats",
+                "Results",
+                "Files flagged",
+                "Matches",
                 "Duration",
                 "Result",
                 "View",
@@ -79,16 +81,17 @@ class HistoryView(QWidget):
         self.table.setColumnWidth(1, 80)
         self.table.setColumnWidth(2, 280)
         self.table.setColumnWidth(3, 65)
-        self.table.setColumnWidth(4, 70)
-        self.table.setColumnWidth(5, 80)
-        self.table.setColumnWidth(6, 90)
-        self.table.setColumnWidth(7, 100)
+        self.table.setColumnWidth(4, 90)
+        self.table.setColumnWidth(5, 75)
+        self.table.setColumnWidth(6, 80)
+        self.table.setColumnWidth(7, 90)
+        self.table.setColumnWidth(8, 100)
         self.table.horizontalHeader().setStretchLastSection(False)
         self.table.horizontalHeader().setSectionResizeMode(
             2, QHeaderView.ResizeMode.Stretch
         )
         self.table.horizontalHeader().setSectionResizeMode(
-            7, QHeaderView.ResizeMode.Fixed
+            8, QHeaderView.ResizeMode.Fixed
         )
         self.table.hide()
         layout.addWidget(self.table, 1)
@@ -131,12 +134,27 @@ class HistoryView(QWidget):
             self.table.insertRow(row)
             duration = float(record.get("duration", 0) or 0)
             target = record.get("target", "")
+            report = record.get("report") or {}
+            summary = report.get("summary", {}) if isinstance(report, dict) else {}
+            file_count = int(record.get("file_count", 0) or 0)
+            file_count = int(summary.get("total_files", file_count) or 0)
+            clean_files = int(record.get("clean_files", 0) or 0)
+            error_files = int(record.get("error_files", 0) or 0)
+            skipped_files = int(record.get("skipped_files", 0) or 0)
+            flagged_files = int(
+                summary.get(
+                    "threat_files",
+                    max(0, file_count - clean_files - error_files - skipped_files),
+                )
+                or 0
+            )
             values = [
                 display_datetime(record.get("started_at", "")),
                 record.get("scan_type", "custom").title(),
                 short_target(target),
-                record.get("file_count", 0),
-                record.get("threats_found", 0),
+                file_count,
+                flagged_files,
+                summary.get("threats_found", record.get("threats_found", 0)),
                 f"{duration:.1f}s",
                 record.get("status", "unknown").title(),
             ]
@@ -146,7 +164,19 @@ class HistoryView(QWidget):
                     item.setData(Qt.ItemDataRole.UserRole, record["id"])
                 if column == 2:
                     item.setToolTip(target)
-                if column == 6:
+                if column == 3:
+                    item.setToolTip(
+                        "All file results recorded, including clean, detected, skipped and errored files."
+                    )
+                if column == 4:
+                    item.setToolTip(
+                        "Files with one or more detections in this scan."
+                    )
+                if column == 5:
+                    item.setToolTip(
+                        "Individual detector findings; one flagged file may have multiple matches."
+                    )
+                if column == 7:
                     item.setForeground(QColor(status_color(record.get("status", ""))))
                 self.table.setItem(row, column, item)
             results_button = QPushButton("Results", self.table)
@@ -160,8 +190,13 @@ class HistoryView(QWidget):
                     saved_record
                 )
             )
-            self.table.setCellWidget(row, 7, results_button)
+            self.table.setCellWidget(row, 8, results_button)
+        set_table_row_numbers(self.table)
         has_records = bool(records)
+        self.status.setText(
+            f"Showing {len(records)} of the latest 100 scans. Ctrl-click or Shift-click to select entries; "
+            "Ctrl+A selects the visible list."
+        )
         if not has_records:
             self.empty_state.set_message(
                 "No scan history yet",

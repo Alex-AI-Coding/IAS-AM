@@ -21,6 +21,7 @@ from antivirus.view.components import (
     display_datetime,
     page_header,
     section_title,
+    set_table_row_numbers,
     status_pill,
 )
 
@@ -80,14 +81,30 @@ class DashboardView(QWidget):
         metrics = QHBoxLayout()
         metrics.setSpacing(13)
         self.total_scans = MetricCard("S", "Total scans")
-        self.files_scanned = MetricCard("F", "Files scanned")
-        self.clean_files = MetricCard("✓", "No matches")
-        self.threats_found = MetricCard("!", "Threats found")
+        self.files_scanned = MetricCard("F", "Files checked")
+        self.files_scanned.setToolTip(
+            "File checks across saved scans. Re-scanning a file counts it again; skipped files and errors are excluded."
+        )
+        self.clean_files = MetricCard("✓", "No-match checks")
+        self.clean_files.setToolTip(
+            "File checks with no detections across saved scans. Re-scanning counts again."
+        )
+        self.threats_found = MetricCard("!", "Files with detections")
+        self.threats_found.setToolTip(
+            "File checks with one or more detections. One file is counted once per scan, "
+            "even if it has multiple matches."
+        )
+        self.detection_matches = MetricCard("M", "Detection matches")
+        self.detection_matches.setToolTip(
+            "Individual engine findings across saved scans. One file can have multiple "
+            "matches, and repeat scans count again."
+        )
         for card in (
             self.total_scans,
             self.files_scanned,
             self.clean_files,
             self.threats_found,
+            self.detection_matches,
         ):
             metrics.addWidget(card, 1)
         layout.addLayout(metrics)
@@ -153,7 +170,8 @@ class DashboardView(QWidget):
         self.total_scans.set_value(statistics.get("total_scans", 0))
         self.files_scanned.set_value(statistics.get("files_scanned", 0))
         self.clean_files.set_value(statistics.get("clean_files", 0))
-        self.threats_found.set_value(statistics.get("threats_found", 0))
+        self.threats_found.set_value(statistics.get("threat_files", 0))
+        self.detection_matches.set_value(statistics.get("threats_found", 0))
 
         if recent_scans:
             last = recent_scans[0]
@@ -234,6 +252,7 @@ class DashboardView(QWidget):
             ]
             for column, value in enumerate(values):
                 self.activity_table.setItem(row, column, QTableWidgetItem(str(value)))
+        set_table_row_numbers(self.activity_table)
         has_activity = bool(recent_scans)
         self.activity_table.setVisible(has_activity)
         self.activity_empty.setVisible(not has_activity)

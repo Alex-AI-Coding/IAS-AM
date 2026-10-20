@@ -103,7 +103,8 @@ class SettingsView(QWidget):
         (
             "auto_quarantine_high_risk",
             "Automatic high-risk quarantine",
-            "Moves files with a High detection into the encrypted local vault. Low and Medium detections stay available for review.",
+            "Moves High detections into the encrypted local vault. "
+            "Low and Medium detections stay available for review.",
             True,
         ),
         (
@@ -270,6 +271,14 @@ class SettingsView(QWidget):
             details += (
                 "\n\nVirusTotal will receive file hashes for reputation checks; "
                 "file contents are not uploaded."
+            )
+        if current.get("auto_quarantine_high_risk") and not self._saved_values.get(
+            "auto_quarantine_high_risk"
+        ):
+            details += (
+                "\n\nHigh detections will be moved automatically into the encrypted "
+                "quarantine vault after scans. Disable this setting to keep detected "
+                "files in their original locations."
             )
 
         if confirm:

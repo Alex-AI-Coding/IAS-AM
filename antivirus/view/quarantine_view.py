@@ -27,6 +27,7 @@ from antivirus.view.components import (
     configure_table,
     display_datetime,
     page_header,
+    set_table_row_numbers,
 )
 from antivirus.view.theme import COLORS
 
@@ -329,6 +330,7 @@ class QuarantineView(QWidget):
                         )
                     )
                 self.table.setItem(row, column, item)
+        set_table_row_numbers(self.table, start + 1)
         self.table.setVisible(bool(results))
         self.empty.setVisible(not results)
         if self._read_error:

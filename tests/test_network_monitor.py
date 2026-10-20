@@ -255,6 +255,44 @@ def test_refresh_shows_progress_and_restores_controls(qapp, monkeypatch):
         tab.close()
 
 
+def test_failed_refresh_clears_stale_connections_and_disables_actions(
+    qapp, monkeypatch
+):
+    def fail():
+        raise OSError("connection snapshot unavailable")
+
+    monkeypatch.setattr(NetworkMonitorService, "connections", fail)
+    tab = NetworkMonitorTab()
+    tab._show_rows(
+        [
+            {
+                "process": "stale.exe",
+                "pid": 21,
+                "process_create_time": 1,
+                "protocol": "TCP",
+                "local_endpoint": "127.0.0.1:1000",
+                "endpoint": "203.0.113.5:443",
+                "remote_host": "—",
+                "state": "ESTABLISHED",
+            }
+        ]
+    )
+    tab.table.selectRow(0)
+    assert tab.terminate_button.isEnabled()
+
+    tab.refresh_connections()
+    deadline = monotonic() + 3
+    while tab.is_busy() and monotonic() < deadline:
+        qapp.processEvents()
+        QTest.qWait(10)
+
+    assert not tab.is_busy()
+    assert tab.table.rowCount() == 0
+    assert not tab.terminate_button.isEnabled()
+    assert "unavailable" in tab.status.text()
+    tab.close()
+
+
 def test_connection_spinner_rotates_while_active(qapp):
     spinner = ConnectionSpinner()
     spinner.start()

@@ -34,6 +34,7 @@ from antivirus.view.components import (
     MetricCard,
     configure_table,
     page_header,
+    set_table_row_numbers,
 )
 
 
@@ -54,7 +55,8 @@ class ResultsView(QWidget):
         heading.addWidget(
             page_header(
                 "Scan results",
-                "High risk files are automatically quarantined when enabled. Review suspicious, skipped, and incomplete results separately.",
+                "High risk files are automatically quarantined when enabled. "
+                "Review suspicious, skipped, and incomplete results separately.",
             ),
             1,
         )
@@ -83,6 +85,9 @@ class ResultsView(QWidget):
             "scan errors are listed separately and are not included here."
         )
         self.clean_card = MetricCard("✓", "No matches")
+        self.clean_card.setToolTip(
+            "Files with no detections in this scan. A clean result is not a guarantee of safety."
+        )
         self.threat_card = MetricCard("?", "Suspicious files")
         self.threat_card.setToolTip(
             "Low or Medium detections that could be dangerous and need review. "
@@ -99,6 +104,10 @@ class ResultsView(QWidget):
             "Files intentionally not scanned, such as links, special files, oversized "
             "files, or protected vault content."
         )
+        self.match_card = MetricCard("M", "Detection matches")
+        self.match_card.setToolTip(
+            "Total engine findings. One file may have multiple matches."
+        )
         for card in (
             self.total_card,
             self.clean_card,
@@ -106,6 +115,7 @@ class ResultsView(QWidget):
             self.high_risk_card,
             self.error_card,
             self.skipped_card,
+            self.match_card,
         ):
             metrics.addWidget(card, 1)
         layout.addLayout(metrics)
@@ -236,17 +246,20 @@ class ResultsView(QWidget):
         self.high_risk_card.set_value(report.high_risk_files)
         self.error_card.set_value(report.error_files)
         self.skipped_card.set_value(report.skipped_files)
+        self.match_card.set_value(report.threats_found)
         self.summary.setText(
             f"{report.total_files} results recorded | {report.checked_files} files checked | "
             f"{report.clean_files} with no matches | "
             f"{report.high_risk_files} high risk ({report.quarantined_files} automatically quarantined) | "
-            f"{report.suspicious_files} suspicious | {report.error_files} errors | "
+            f"{report.suspicious_files} suspicious | {report.threats_found} detection matches | "
+            f"{report.error_files} errors | "
             f"{report.skipped_files} skipped | {report.outcome.title()}"
         )
         self.summary.setWordWrap(True)
         self.summary.setTextFormat(Qt.TextFormat.PlainText)
         self.summary.setToolTip(
-            "No matches means the enabled engines found no known pattern; it is not a guarantee that a file is safe.\n\n"
+            "No matches means the enabled engines found no known pattern; "
+            "it is not a guarantee that a file is safe.\n\n"
             f"Scan duration: {report.duration:.3f} seconds\n"
             f"Started: {report.started_at or 'Unavailable'}\n"
             f"Completed: {report.completed_at or 'Unavailable'}\n\n"
@@ -340,6 +353,7 @@ class ResultsView(QWidget):
                     item.setForeground(QColor(status_color(result.status.value)))
                 self.table.setItem(row, column, item)
 
+        set_table_row_numbers(self.table, start + 1)
         has_rows = bool(results)
         self.table.setVisible(has_rows)
         self.empty_state.setVisible(not has_rows)

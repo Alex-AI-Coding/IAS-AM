@@ -21,6 +21,7 @@ class ScanReport:
     warnings: list[str] = field(default_factory=list)
     started_at: str = ""
     completed_at: str = ""
+    saved_threat_matches: int | None = field(default=None, repr=False)
 
     @property
     def outcome(self) -> str:
@@ -34,6 +35,8 @@ class ScanReport:
 
     @property
     def threats_found(self) -> int:
+        if not self.results and self.saved_threat_matches is not None:
+            return self.saved_threat_matches
         return sum(len(result.threats) for result in self.results)
 
     @property
@@ -156,6 +159,8 @@ class ScanReport:
         report.completed_at = str(
             summary.get("completed_at", report.completed_at) or ""
         )
+        if not report.results and "threats_found" in summary:
+            report.saved_threat_matches = int(summary.get("threats_found", 0) or 0)
         return report
 
     @classmethod
@@ -165,13 +170,20 @@ class ScanReport:
         report = cls(
             total_files=int(record.get("file_count", 0) or 0),
             clean_files=int(record.get("clean_files", 0) or 0),
-            threat_files=int(record.get("threats_found", 0) or 0),
             error_files=int(record.get("error_files", 0) or 0),
             skipped_files=int(record.get("skipped_files", 0) or 0),
+            saved_threat_matches=int(record.get("threats_found", 0) or 0),
             warnings=list(record.get("warnings", []) or []),
             started_at=str(record.get("started_at", "") or ""),
             completed_at=str(record.get("completed_at", "") or ""),
             duration=float(record.get("duration", 0) or 0),
+        )
+        report.threat_files = max(
+            0,
+            report.total_files
+            - report.clean_files
+            - report.error_files
+            - report.skipped_files,
         )
         report.warnings.append(
             "This older history entry contains only a summary; individual file results were not stored."

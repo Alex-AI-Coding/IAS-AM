@@ -143,6 +143,16 @@ def configure_table(table: QTableWidget) -> None:
             header_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
 
+def set_table_row_numbers(table: QTableWidget, first_number: int = 1) -> None:
+    """Show stable, one-based row numbers, including across paginated views."""
+    table.setVerticalHeaderLabels(
+        [str(first_number + row) for row in range(table.rowCount())]
+    )
+    table.verticalHeader().setVisible(table.rowCount() > 0)
+    table.verticalHeader().setFixedWidth(42)
+    table.verticalHeader().setToolTip("Row number")
+
+
 def display_datetime(value: str) -> str:
     if not value:
         return "—"

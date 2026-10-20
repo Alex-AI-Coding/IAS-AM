@@ -231,16 +231,25 @@ QLabel[status="inactive"] { color: $muted; background: $surface; }
 QLabel[status="warning"] { color: $warning; background: $warning_bg; border-color: $warning; }
 QLabel[status="danger"] { color: $danger; background: $danger_bg; border-color: $danger; }
 QTableWidget {
-    background: $surface; color: $text; alternate-background-color: $surface_alt;
+    background-color: $surface; color: $text; alternate-background-color: $surface_alt;
     border: 1px solid $border; border-radius: 11px; gridline-color: transparent;
     selection-background-color: $border; selection-color: $white; font-size: 10.5pt; outline: 0;
 }
 QTableWidget::item { border-bottom: 1px solid $border; padding: 10px; }
-QHeaderView::section {
+QTableWidget QHeaderView { background-color: $surface_alt; color: $text; }
+QTableWidget QHeaderView::section:horizontal {
     background: $border; color: $text; border: 0; border-bottom: 1px solid $accent;
     padding: 11px; font-size: 10pt; font-weight: 650;
 }
-QTableCornerButton::section { background: $border; border: 0; }
+QTableWidget QHeaderView::section:vertical {
+    background: $surface_alt; color: $muted; border: 0;
+    border-right: 1px solid $border; border-bottom: 1px solid $border;
+    padding: 8px 4px; font-size: 10pt;
+}
+QTableWidget QTableCornerButton::section {
+    background: $surface_alt; border: 0;
+    border-right: 1px solid $border; border-bottom: 1px solid $border;
+}
 QProgressBar {
     min-height: 16px; max-height: 16px; border: 1px solid $border;
     border-radius: 8px; background: $surface_alt; text-align: center;

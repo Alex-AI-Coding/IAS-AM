@@ -106,6 +106,57 @@ def test_results_control_shift_and_select_all_emit_only_eligible_detections(
     view.close()
 
 
+def test_dashboard_distinguishes_files_flagged_from_detection_matches(qapp):
+    from antivirus.view.dashboard_view import DashboardView
+
+    view = DashboardView()
+    view.update_dashboard(
+        {
+            "total_scans": 2,
+            "files_scanned": 3,
+            "clean_files": 1,
+            "threat_files": 2,
+            "threats_found": 3,
+        },
+        [],
+        {},
+    )
+
+    assert view.files_scanned.value_label.text() == "3"
+    assert view.clean_files.value_label.text() == "1"
+    assert view.threats_found.value_label.text() == "2"
+    assert view.detection_matches.value_label.text() == "3"
+    assert "multiple matches" in view.detection_matches.toolTip()
+    view.close()
+
+
+def test_enabling_automatic_quarantine_discloses_file_movement_before_save(
+    qapp, monkeypatch
+):
+    from antivirus.view.settings_view import SettingsView
+
+    view = SettingsView()
+    key = "auto_quarantine_high_risk"
+    previous_value = view.settings.value(key, True, type=bool)
+    view.set_saved_value(key, False)
+    view.rows[key].checkbox.setChecked(True)
+    prompts = []
+
+    def cancel_save(_parent, _title, text, *_args):
+        prompts.append(text)
+        return QMessageBox.StandardButton.Cancel
+
+    monkeypatch.setattr(QMessageBox, "question", cancel_save)
+
+    assert not view.save_changes()
+    assert len(prompts) == 1
+    assert "High detections will be moved automatically" in prompts[0]
+    assert view.has_unsaved_changes()
+    view.settings.setValue(key, previous_value)
+    view.settings.sync()
+    view.close()
+
+
 def test_batch_quarantine_restore_conflict_and_delete_keep_unselected_content(
     qapp, tmp_path, monkeypatch
 ):
@@ -252,6 +303,36 @@ def record(repository, target="fixture"):
     return repository.record_scan(1, 0, 1, 0, "clean", target=target)
 
 
+def test_history_rows_show_file_and_match_counts_separately(qapp, tmp_path):
+    repository = ScanRepository(str(tmp_path / "history.db"))
+    repository.record_scan(
+        file_count=5,
+        threats_found=3,
+        clean_files=1,
+        error_files=1,
+        skipped_files=1,
+        status="detected",
+        report={
+            "summary": {
+                "total_files": 5,
+                "threat_files": 2,
+                "threats_found": 3,
+            }
+        },
+    )
+    view = HistoryView(HistoryController(repository))
+    view.refresh()
+
+    assert view.table.rowCount() == 1
+    assert view.table.verticalHeaderItem(0).text() == "1"
+    assert view.table.item(0, 3).text() == "5"
+    assert view.table.item(0, 4).text() == "2"
+    assert view.table.item(0, 5).text() == "3"
+    assert view.table.horizontalHeaderItem(4).text() == "Files flagged"
+    assert view.table.horizontalHeaderItem(5).text() == "Matches"
+    view.close()
+
+
 def test_selected_history_removal_uses_ids_and_preserves_newer_scan(
     qapp, tmp_path, monkeypatch
 ):
@@ -302,6 +383,8 @@ def test_clear_all_history_removes_older_hidden_rows_after_confirmation(
     view = HistoryView(HistoryController(repository))
     view.refresh()
     assert view.table.rowCount() == 100
+    assert view.table.verticalHeaderItem(0).text() == "1"
+    assert view.table.verticalHeaderItem(99).text() == "100"
     monkeypatch.setattr(
         QMessageBox, "question", lambda *_: QMessageBox.StandardButton.Cancel
     )

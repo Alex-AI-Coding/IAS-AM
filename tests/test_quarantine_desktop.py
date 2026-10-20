@@ -118,6 +118,7 @@ def test_quarantine_restore_and_delete_buttons_complete_after_worker_idle(
     assert view.is_busy() and not view.refresh_button.isEnabled()
     until(qapp, lambda: not view.is_busy())
     assert not original.exists() and view.held_card.value_label.text() == "1"
+    assert view.table.verticalHeaderItem(0).text() == "1"
     assert view.table.item(0, 1).text() == "Trojan"
     assert view.table.item(0, 2).text() == "High"
     view.table.selectRow(0)
@@ -217,6 +218,31 @@ def test_all_confirmation_dialogs_use_plain_text_and_default_cancel(
     monkeypatch.setattr(QMessageBox, "exec", cancel)
     assert not view._confirm("Test", "<untrusted filename>")
     assert observed == [(Qt.TextFormat.PlainText, "Cancel")]
+
+
+def test_cancelled_restore_explains_the_detected_file_stays_in_quarantine(
+    view, tmp_path, monkeypatch
+):
+    original = tmp_path / "do-not-release.txt"
+    result = detection(original)
+    view.service.quarantine(result)
+    view.refresh()
+    view.table.selectRow(0)
+    prompts = []
+
+    def cancel_restore(title, text):
+        prompts.append((title, text))
+        return False
+
+    monkeypatch.setattr(view, "_confirm", cancel_restore)
+
+    view.restore_selected()
+
+    assert len(prompts) == 1
+    assert "reintroduce the detected threat" in prompts[0][1]
+    assert not original.exists()
+    assert view.service.items()[0].state == "active"
+    assert not view.is_busy()
 
 
 def test_scanning_disables_vault_actions_and_old_result_actions(qapp, tmp_path):

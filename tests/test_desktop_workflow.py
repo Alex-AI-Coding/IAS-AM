@@ -4,13 +4,15 @@ from time import monotonic
 from threading import Event
 
 from PySide6.QtTest import QTest
-from PySide6.QtCore import QEvent, QSettings, Qt, QVariantAnimation
+from PySide6.QtCore import QEvent, QPoint, QSettings, Qt, QVariantAnimation
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QHeaderView,
     QProgressBar,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
 )
 
 from antivirus.model.scan_report import ScanReport
@@ -18,6 +20,7 @@ from antivirus.model.scan_result import ScanResult
 from antivirus.model.scan_status import ScanStatus
 from antivirus.model.threat import Threat
 from antivirus.view.scan_view import ScanView
+from antivirus.view.components import configure_table, set_table_row_numbers
 from antivirus.view.results_view import ResultsDialog, ResultsView
 from antivirus.view.main_window import MainWindow
 from antivirus.view.theme import COLORS, apply_theme
@@ -173,9 +176,10 @@ def test_skipped_results_filter_and_exports(qapp):
     report.add_result(ScanResult("safe", ScanStatus.CLEAN))
     report.add_result(ScanResult("big", ScanStatus.SKIPPED))
     view.show_report(report)
-    assert view.error_card.value_label.text() == "1"
+    assert view.error_card.value_label.text() == "0"
+    assert view.skipped_card.value_label.text() == "1"
     assert "Cancelled" in view.summary.text()
-    view.filter_combo.setCurrentIndex(4)
+    view.filter_combo.setCurrentIndex(5)
     assert view.table.rowCount() == 1
     assert view.table.item(0, 0).text() == "big"
     assert view.export_signed_button.isEnabled()
@@ -207,10 +211,14 @@ def test_results_summary_counts_high_risk_files_once_and_lists_every_warning(qap
     view.show_report(report)
 
     assert view.total_card.value_label.text() == "2"
-    assert view.threat_card.value_label.text() == "2"
+    assert view.threat_card.value_label.text() == "1"
     assert view.high_risk_card.value_label.text() == "1"
-    assert "2 suspicious" in view.summary.text()
-    assert "1 high-risk" in view.summary.text()
+    assert view.match_card.value_label.text() == "3"
+    assert "1 suspicious" in view.summary.text()
+    assert "3 detection matches" in view.summary.text()
+    assert "1 high risk" in view.summary.text()
+    assert not view.table.verticalHeader().isHidden()
+    assert view.table.verticalHeaderItem(0).text() == "1"
     assert "first warning" in view.summary.toolTip()
     assert "second warning" in view.summary.toolTip()
     view.close()
@@ -347,6 +355,7 @@ def test_large_result_set_is_paged_and_searchable_without_losing_exports(qapp):
     view.show()
     qapp.processEvents()
     assert view.table.rowCount() == 250
+    assert view.table.verticalHeaderItem(0).text() == "1"
     assert view.next_button.isEnabled()
     view.table.verticalScrollBar().setValue(
         view.table.verticalScrollBar().maximum()
@@ -354,9 +363,39 @@ def test_large_result_set_is_paged_and_searchable_without_losing_exports(qapp):
     assert view.table.verticalScrollBar().value() > 0
     view._change_page(1)
     assert view.table.item(0, 0).text() == "file-0250.txt"
+    assert view.table.verticalHeaderItem(0).text() == "251"
     assert view.table.verticalScrollBar().value() == 0
     view.search_box.setText("file-0619")
     assert view.table.rowCount() == 1
     assert view.table.item(0, 0).text() == "file-0619.txt"
+    assert view.table.verticalHeaderItem(0).text() == "1"
     assert len(ReportFormatter.to_dict(report)["results"]) == 620
     view.close()
+
+
+def test_numbered_table_header_background_matches_both_themes(qapp):
+    table = QTableWidget(3, 1)
+    configure_table(table)
+    table.setHorizontalHeaderLabels(["Activity"])
+    table.setItem(0, 0, QTableWidgetItem("Recent scan"))
+    set_table_row_numbers(table)
+    table.resize(360, 240)
+    table.show()
+
+    try:
+        for mode, expected in (
+            ("dark", "#1C1C1C"),
+            ("light", "#DDE4E9"),
+        ):
+            apply_theme(qapp, mode)
+            qapp.processEvents()
+            image = table.grab().toImage()
+            header_rect = table.verticalHeader().geometry()
+            blank_header_pixel = QPoint(
+                header_rect.right() - 4,
+                header_rect.bottom() - 8,
+            )
+            assert image.pixelColor(blank_header_pixel).name().upper() == expected
+    finally:
+        table.close()
+        apply_theme(qapp, "dark")

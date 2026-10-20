@@ -29,3 +29,18 @@ def test_scan_report_summary():
     assert report.clean_files == 2
     assert report.threat_files == 1
     assert report.error_files == 0
+
+
+def test_legacy_history_keeps_file_and_match_counts_distinct():
+    report = ScanReport.from_history_record(
+        {
+            "file_count": 5,
+            "clean_files": 1,
+            "threats_found": 4,
+            "error_files": 1,
+            "skipped_files": 1,
+        }
+    )
+
+    assert report.threat_files == 2
+    assert report.threats_found == 4
